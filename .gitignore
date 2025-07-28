@@ -20,6 +20,7 @@ config/secrets.yml
 config/database.yml
 secrets/
 credentials/
+chromaDb/
 
 # API Keys and tokens
 *.key
