@@ -7,6 +7,7 @@ questions, and responses using Agno agents.
 
 import uuid
 from typing import Dict, List, Any
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 
@@ -90,6 +91,7 @@ async def start_interview(interview_data: InterviewCreate) -> InterviewResponse:
                 question["phase_order"] = phase.phase_order
             all_questions.extend(phase_questions)
         
+        now_iso = datetime.utcnow().isoformat() + "Z"
         # Create interview session data
         session_data = {
             "session_id": session_id,
@@ -104,7 +106,7 @@ async def start_interview(interview_data: InterviewCreate) -> InterviewResponse:
             "responses": [],
             "evaluations": [],
             "status": "in_progress",
-            "started_at": "2024-01-01T00:00:00Z"  # TODO: Add proper timestamp
+            "started_at": now_iso
         }
         
         # Store session in Redis
@@ -115,8 +117,8 @@ async def start_interview(interview_data: InterviewCreate) -> InterviewResponse:
             candidate=interview_data.candidate,
             position=interview_data.position,
             status="in_progress",
-            started_at="2024-01-01T00:00:00Z",  # TODO: Add proper timestamp
-            total_questions=len(questions),
+            started_at=now_iso,
+            total_questions=len(all_questions),
             completed_questions=0
         )
         
@@ -157,11 +159,11 @@ async def get_next_question(session_id: str) -> QuestionResponse:
                 "text": question_data["question"],
                 "category": question_data["category"],
                 "difficulty": question_data.get("difficulty", "medium"),
-                "expected_duration": question_data.get("time_estimate", 300)
+                "expected_duration": max(30, question_data.get("time_estimate", 300))
             },
             session_id=session_id,
             question_number=current_index + 1,
-            time_limit=question_data.get("time_estimate", 300) * 60  # Convert to seconds
+            time_limit=max(30, question_data.get("time_estimate", 300)) * 60  # Convert to seconds
         )
         
     except HTTPException:
@@ -249,9 +251,10 @@ async def end_interview(session_id: str) -> Dict[str, str]:
         if not session_data:
             raise HTTPException(status_code=404, detail="Interview session not found")
         
+        now_iso = datetime.utcnow().isoformat() + "Z"
         # Update session status
         session_data["status"] = "completed"
-        session_data["ended_at"] = "2024-01-01T00:00:00Z"  # TODO: Add proper timestamp
+        session_data["ended_at"] = now_iso
         
         # Generate final assessment using interview agent
         candidate_profile = CandidateProfile(**session_data["candidate"])

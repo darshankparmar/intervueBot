@@ -28,7 +28,7 @@ class QuestionGeneratorAgent:
         """Initialize the question generator agent."""
         # Initialize LLM with Google Gemini
         self.agent = Agent(
-            model=Gemini(id="gemini-2.0-flash"),
+            model=Gemini(id="gemini-2.0-flash-lite"),
             name="QuestionBot",
             role="Dynamic Interview Question Generator",
             goal="Generate relevant, engaging, and adaptive interview questions that effectively assess candidate skills and fit",
