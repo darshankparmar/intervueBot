@@ -281,7 +281,6 @@ async def end_interview(session_id: str) -> Dict[str, str]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to end interview: {str(e)}")
 
-
 @router.get("/{session_id}/report")
 async def get_interview_report(session_id: str) -> Dict[str, Any]:
     """

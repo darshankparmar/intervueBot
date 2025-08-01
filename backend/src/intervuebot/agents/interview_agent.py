@@ -29,7 +29,10 @@ class InterviewAgent:
         """Initialize the interview agent."""
         # Initialize LLM with Google Gemini
         self.agent = Agent(
-            model=Gemini(id="gemini-2.0-flash-lite"),
+            model=Gemini(
+                id="gemini-2.0-flash-lite",
+                api_key=settings.GOOGLE_API_KEY
+            ),
             name="IntervueBot",
             role="AI Interview Conductor",
             goal="Conduct comprehensive technical and behavioral interviews to assess candidate skills and fit",
