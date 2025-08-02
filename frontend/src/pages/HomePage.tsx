@@ -3,36 +3,60 @@ import {
   Container,
   Typography,
   Box,
-  Button,
+  Card,
+  CardContent,
   TextField,
+  Button,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
-  Paper,
-  Grid,
-  Card,
-  CardContent,
   Alert,
   CircularProgress,
 } from '@mui/material';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import {
+  User,
+  Mail,
+  Briefcase,
+  Award,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  FileText,
+  Upload,
+} from 'lucide-react';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import {
-  Bot,
-  Brain,
-  Clock,
-  Target,
-  Users,
-  Zap,
-  Upload,
-  FileText,
-  CheckCircle,
-} from 'lucide-react';
-import InterviewService, { InterviewCreate } from '../services/api';
+import { useNavigate } from 'react-router-dom';
+
+import { InterviewService, InterviewCreate, CandidateProfile } from '../services/api';
+
+import FileUpload from '../components/FileUpload';
+
+// Form data type without files (files are handled separately)
+interface InterviewFormData {
+  candidate: {
+    name: string;
+    email: string;
+    position: string;
+    experience_level: 'junior' | 'mid-level' | 'senior' | 'lead';
+    interview_type: 'technical' | 'behavioral' | 'mixed' | 'leadership';
+  };
+  duration_minutes: number;
+}
+
+interface UploadedFile {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  fileType: 'resume' | 'cv' | 'cover_letter';
+  content: string;
+  status: 'uploading' | 'success' | 'error';
+  error?: string;
+}
 
 // Validation schema
 const schema = yup.object().shape({
@@ -42,7 +66,7 @@ const schema = yup.object().shape({
     position: yup.string().required('Position is required'),
     experience_level: yup.string().oneOf(['junior', 'mid-level', 'senior', 'lead']).required('Experience level is required'),
     interview_type: yup.string().oneOf(['technical', 'behavioral', 'mixed', 'leadership']).required('Interview type is required'),
-    files: yup.array().min(1, 'At least one file is required').required('Files are required'),
+    // Remove files validation from schema since we handle it manually in onSubmit
   }),
   duration_minutes: yup.number().min(30).max(120).required('Duration is required'),
 });
@@ -51,13 +75,14 @@ const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
 
   const {
     control,
     handleSubmit,
     formState: { errors },
     watch,
-  } = useForm<InterviewCreate>({
+  } = useForm<InterviewFormData>({
     resolver: yupResolver(schema),
     defaultValues: {
       candidate: {
@@ -66,87 +91,109 @@ const HomePage: React.FC = () => {
         position: '',
         experience_level: 'mid-level',
         interview_type: 'technical',
-        files: [
-          {
-            filename: 'resume.pdf',
-            file_url: 'https://example.com/resume.pdf',
-            file_type: 'resume' as const,
-          }
-        ],
       },
       duration_minutes: 60,
     },
   });
 
-  const onSubmit = async (data: InterviewCreate) => {
-    setLoading(true);
-    setError(null);
-
+  const onSubmit = async (data: InterviewFormData) => {
     try {
-      const response = await InterviewService.startInterview(data);
+      setLoading(true);
+      setError(null);
+
+      // Convert uploaded files to the format expected by the API
+      const filesForAPI = uploadedFiles
+        .filter(file => file.status === 'success')
+        .map(file => ({
+          name: file.name,
+          type: file.fileType,
+          size: file.size,
+          content: file.content,
+        }));
+
+      if (filesForAPI.length === 0) {
+        setError('Please upload at least one valid file');
+        return;
+      }
+
+      // Update the form data with uploaded files
+      const interviewData: InterviewCreate = {
+        ...data,
+        candidate: {
+          ...data.candidate,
+          files: filesForAPI,
+        },
+      };
+
+      // Start the interview
+      const response = await InterviewService.startInterview(interviewData);
+      
+      // Navigate to interview page with session ID
       navigate(`/interview/${response.session_id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start interview');
+      
+    } catch (err: any) {
+      setError(err.message || 'Failed to start interview');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleFilesChange = (files: UploadedFile[]) => {
+    setUploadedFiles(files);
+  };
+
   const features = [
     {
-      icon: <Brain size={32} />,
+      icon: <User size={24} color="#6366f1" />,
       title: 'AI-Powered Interviews',
-      description: 'Intelligent question generation and adaptive difficulty based on candidate responses',
+      description: 'Advanced AI agents conduct intelligent, adaptive interviews based on candidate responses and resume analysis.',
     },
     {
-      icon: <Target size={32} />,
-      title: 'Resume Analysis',
-      description: 'Automated analysis of resumes and CVs to extract skills and experience',
-    },
-    {
-      icon: <Clock size={32} />,
+      icon: <CheckCircle size={24} color="#10b981" />,
       title: 'Real-time Evaluation',
-      description: 'Instant feedback and scoring with detailed performance metrics',
+      description: 'Get instant feedback and scoring on technical skills, communication, and problem-solving abilities.',
     },
     {
-      icon: <Users size={32} />,
-      title: 'Multi-format Support',
-      description: 'Support for PDF, DOC, DOCX, and TXT files for comprehensive analysis',
+      icon: <FileText size={24} color="#f59e0b" />,
+      title: 'Resume Analysis',
+      description: 'Automated parsing and analysis of resumes, CVs, and cover letters to extract relevant information.',
     },
     {
-      icon: <Zap size={32} />,
-      title: 'Adaptive Questions',
-      description: 'Dynamic question generation that adapts to candidate performance',
-    },
-    {
-      icon: <CheckCircle size={32} />,
+      icon: <Award size={24} color="#8b5cf6" />,
       title: 'Comprehensive Reports',
-      description: 'Detailed evaluation reports with hiring recommendations',
+      description: 'Detailed interview reports with hiring recommendations, skill gaps, and improvement suggestions.',
     },
   ];
 
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
+    <Container maxWidth="lg" sx={{ py: 4 }}>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
       >
         {/* Header */}
-        <Box textAlign="center" mb={6}>
+        <Box textAlign="center" sx={{ mb: 6 }}>
           <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
+            initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
           >
-            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-              <Bot size={64} color="#6366f1" />
-            </Box>
-            <Typography variant="h2" gutterBottom sx={{ fontWeight: 700 }}>
-              Welcome to IntervueBot
+            <Typography
+              variant="h2"
+              sx={{
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                mb: 2,
+              }}
+            >
+              IntervueBot
             </Typography>
             <Typography variant="h5" color="text.secondary" sx={{ mb: 4 }}>
-              AI-Powered Interview Platform for Intelligent Candidate Assessment
+              AI-Powered Interview Platform
             </Typography>
           </motion.div>
         </Box>
@@ -338,33 +385,11 @@ const HomePage: React.FC = () => {
 
                       {/* File Upload Section */}
                       <Box>
-                        <Paper
-                          sx={{
-                            p: 3,
-                            border: '2px dashed',
-                            borderColor: 'primary.main',
-                            backgroundColor: 'rgba(99, 102, 241, 0.05)',
-                            textAlign: 'center',
-                          }}
-                        >
-                          <Upload size={48} color="#6366f1" style={{ marginBottom: 16 }} />
-                          <Typography variant="h6" gutterBottom>
-                            Upload Resume & Documents
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                            Drag and drop your resume, CV, or cover letter files here
-                          </Typography>
-                          <Button
-                            variant="outlined"
-                            startIcon={<FileText />}
-                            sx={{ mt: 2 }}
-                          >
-                            Choose Files
-                          </Button>
-                          <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                            Supported formats: PDF, DOC, DOCX, TXT (Max 10MB each)
-                          </Typography>
-                        </Paper>
+                        <FileUpload
+                          onFilesChange={handleFilesChange}
+                          maxFiles={10}
+                          maxSize={10 * 1024 * 1024} // 10MB
+                        />
                       </Box>
 
                       {/* Submit Button */}

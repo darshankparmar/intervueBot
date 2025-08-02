@@ -62,19 +62,25 @@ const InterviewPage: React.FC = () => {
   }, [timeLeft]);
 
   const loadNextQuestion = async () => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      console.log('No sessionId available');
+      return;
+    }
     
+    console.log('Loading next question for session:', sessionId);
     setLoading(true);
     setError(null);
     setEvaluation(null);
     
     try {
       const questionData = await InterviewService.getNextQuestion(sessionId);
+      console.log('Next question loaded:', questionData);
       setCurrentQuestion(questionData.question);
       setTimeLeft(questionData.time_limit);
       setQuestionNumber(questionData.question_number);
       setTotalQuestions(questionData.question_number + 5); // Estimate
     } catch (err) {
+      console.error('Error loading next question:', err);
       setError(err instanceof Error ? err.message : 'Failed to load question');
     } finally {
       setLoading(false);
@@ -97,8 +103,11 @@ const InterviewPage: React.FC = () => {
       setEvaluation(evaluationData.evaluation);
       setResponse('');
       
+      console.log('Response submitted successfully, scheduling next question...');
+      
       // Auto-advance to next question after 3 seconds
       setTimeout(() => {
+        console.log('Timeout triggered, loading next question...');
         loadNextQuestion();
       }, 3000);
       
@@ -244,6 +253,14 @@ const InterviewPage: React.FC = () => {
                           sx={{ flex: 1 }}
                         >
                           {submitting ? 'Submitting...' : 'Submit Answer'}
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          size="large"
+                          onClick={loadNextQuestion}
+                          disabled={loading}
+                        >
+                          Next Question (Manual)
                         </Button>
                       </Box>
                     </CardContent>

@@ -14,7 +14,7 @@ from datetime import datetime
 from agno.agent import Agent
 from agno.models.google import Gemini
 
-from intervuebot.schemas.interview import ResumeAnalysis, ResumeFile
+from intervuebot.schemas.interview import ResumeAnalysis, ResumeFile, UploadedFileData
 from intervuebot.core.config import settings
 from intervuebot.services.file_processor import file_processor
 
@@ -45,7 +45,7 @@ class ResumeAnalyzer:
             markdown=True,
         )
     
-    async def analyze_resume(self, resume_files: List[ResumeFile], position: str) -> ResumeAnalysis:
+    async def analyze_resume(self, resume_files: List[UploadedFileData], position: str) -> ResumeAnalysis:
         """
         Analyze resume files to extract relevant information.
         
@@ -95,7 +95,7 @@ class ResumeAnalyzer:
                 confidence_score=0.1
             )
     
-    async def _extract_text_from_files(self, resume_files: List[ResumeFile]) -> str:
+    async def _extract_text_from_files(self, resume_files: List[UploadedFileData]) -> str:
         """
         Extract text content from resume files.
         
@@ -105,15 +105,26 @@ class ResumeAnalyzer:
         Returns:
             str: Combined text content from all files
         """
-        # Process uploaded files using file processor
-        processed_result = await file_processor.process_uploaded_files(resume_files)
+        # For now, extract text directly from UploadedFileData content
+        combined_text = ""
+        for file_data in resume_files:
+            combined_text += f"\n--- {file_data.name} ---\n"
+            # Decode base64 content
+            import base64
+            try:
+                # Strip data URL prefix if present (e.g., "data:application/pdf;base64,")
+                content = file_data.content
+                if content.startswith('data:'):
+                    # Find the base64 part after the comma
+                    content = content.split(',', 1)[1] if ',' in content else content
+                
+                decoded_content = base64.b64decode(content).decode('utf-8', errors='ignore')
+                combined_text += decoded_content
+            except Exception as e:
+                logger.warning(f"Failed to decode file {file_data.name}: {e}")
+                combined_text += f"Error decoding file content: {e}"
         
-        if processed_result.get("error"):
-            logger.warning(f"File processing error: {processed_result['error']}")
-            # Return basic placeholder if file processing fails
-            return f"Resume files: {len(resume_files)} files\nPosition: {position}\nExperience: 3 years\nSkills: Python, JavaScript"
-        
-        return processed_result.get("combined_text", "")
+        return combined_text
     
     def _create_analysis_prompt(self, resume_text: str, position: str) -> str:
         """

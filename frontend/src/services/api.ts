@@ -18,13 +18,20 @@ export interface ResumeFile {
   file_type: 'resume' | 'cv' | 'cover_letter';
 }
 
+export interface UploadedFileData {
+  name: string;
+  type: 'resume' | 'cv' | 'cover_letter';
+  size: number;
+  content: string;
+}
+
 export interface CandidateProfile {
   name: string;
   email: string;
   position: string;
   experience_level: 'junior' | 'mid-level' | 'senior' | 'lead';
   interview_type: 'technical' | 'behavioral' | 'mixed' | 'leadership';
-  files: ResumeFile[];
+  files: UploadedFileData[];
 }
 
 export interface ResumeAnalysis {

@@ -82,12 +82,58 @@ class AdaptiveInterviewAgent:
                 position, current_difficulty, interview_progress, question_count
             )
             
+            logger.info(f"Generating question with context: {context}")
+            
             # Generate question using AI
             question_prompt = self._create_question_prompt(context)
             question_response = await self.agent.run(question_prompt)
             
+            logger.info(f"AI response: {question_response.content}")
+            
             # Parse question from AI response
             question_data = self._parse_question_response(question_response.content)
+            
+            logger.info(f"Parsed question data: {question_data}")
+            
+            # If parsing failed, generate a dynamic fallback question
+            if not question_data:
+                logger.warning("Question parsing failed, generating fallback question")
+                position = context.get('position', 'Software Engineer')
+                difficulty = context.get('next_difficulty', 'medium')
+                skills = context.get('resume_skills', [])
+                question_count = context.get('question_count', 0)
+                
+                # Generate different questions based on context
+                if question_count == 0:
+                    fallback_question = f"Can you walk me through your experience with {position} development and the technologies you've used?"
+                elif question_count == 1:
+                    if skills:
+                        skill = skills[0] if skills else "programming"
+                        fallback_question = f"Describe a challenging project where you used {skill}. What were the key technical decisions you made?"
+                    else:
+                        fallback_question = f"What's the most complex {position} problem you've solved? Walk me through your approach."
+                elif question_count == 2:
+                    fallback_question = f"How do you approach debugging and troubleshooting in {position} development? Can you give me a specific example?"
+                elif question_count == 3:
+                    fallback_question = f"What's your experience with system design and architecture? How would you design a scalable {position} solution?"
+                else:
+                    fallback_question = f"Tell me about a time when you had to learn a new technology quickly for a {position} project. How did you approach it?"
+                
+                question_data = {
+                    "question": fallback_question,
+                    "category": "technical",
+                    "difficulty": difficulty,
+                    "expected_duration": 300,
+                    "context": {
+                        "focus_area": "experience",
+                        "reasoning": f"fallback question {question_count + 1} based on position and context"
+                    },
+                    "follow_up_hints": [
+                        "What were the technical challenges?",
+                        "How did you handle unexpected issues?",
+                        "What would you do differently?"
+                    ]
+                }
             
             # Create Question object
             question = Question(
@@ -251,43 +297,46 @@ class AdaptiveInterviewAgent:
             str: Question generation prompt
         """
         return f"""
-        Generate the next interview question based on the following context:
+        You are an expert technical interviewer. Generate a unique, contextually relevant interview question.
         
-        Position: {context['position']}
-        Experience Level: {context['experience_level']}
-        Interview Type: {context['interview_type']}
-        Current Difficulty: {context['current_difficulty']}
-        Next Difficulty: {context['next_difficulty']}
-        Interview Progress: {context['interview_progress']:.1%}
-        Questions Asked: {context['question_count']}
-        Average Score: {context['average_score']:.1f}/10
-        Resume Skills: {', '.join(context['resume_skills'][:5])}
-        Recent Themes: {', '.join(context['recent_themes'])}
+        CONTEXT:
+        - Position: {context['position']}
+        - Experience Level: {context['experience_level']}
+        - Interview Type: {context['interview_type']}
+        - Current Difficulty: {context['current_difficulty']}
+        - Next Difficulty: {context['next_difficulty']}
+        - Interview Progress: {context['interview_progress']:.1%}
+        - Questions Asked: {context['question_count']}
+        - Average Score: {context['average_score']:.1f}/10
+        - Resume Skills: {', '.join(context['resume_skills'][:5])}
+        - Recent Themes: {', '.join(context['recent_themes'])}
         
-        Requirements:
-        1. Question should be appropriate for {context['next_difficulty']} difficulty
-        2. Consider the candidate's skills: {', '.join(context['resume_skills'][:3])}
-        3. Build on recent themes: {', '.join(context['recent_themes'])}
-        4. Focus on {context['interview_type']} aspects
-        5. Question should take 3-5 minutes to answer
+        REQUIREMENTS:
+        1. Generate a UNIQUE question different from previous questions
+        2. Difficulty: {context['next_difficulty']} level
+        3. Focus on: {context['interview_type']} aspects
+        4. Consider skills: {', '.join(context['resume_skills'][:3])}
+        5. Build on themes: {', '.join(context['recent_themes'])}
+        6. Question should take 3-5 minutes to answer
+        7. Make it specific to {context['position']} role
         
-        Return JSON with structure:
+        IMPORTANT: Generate a completely different question based on the context. Do not repeat generic questions.
+        
+        Return ONLY valid JSON:
         {{
-            "question": "Your question here",
+            "question": "Your specific, unique question here",
             "category": "technical|behavioral|situational",
-            "difficulty": "easy|medium|hard",
+            "difficulty": "{context['next_difficulty']}",
             "expected_duration": 300,
             "context": {{
                 "focus_area": "specific skill or topic",
-                "reasoning": "why this question"
+                "reasoning": "why this specific question"
             }},
             "follow_up_hints": [
-                "Follow-up question 1",
-                "Follow-up question 2"
+                "Specific follow-up 1",
+                "Specific follow-up 2"
             ]
         }}
-        
-        Return only valid JSON.
         """
     
     def _parse_question_response(self, response_text: str) -> Dict[str, Any]:
@@ -304,26 +353,54 @@ class AdaptiveInterviewAgent:
             import json
             import re
             
-            # Extract JSON from response
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            # Clean the response text
+            cleaned_text = response_text.strip()
+            
+            # Try to extract JSON from response - look for JSON object
+            json_match = re.search(r'\{[^{}]*"question"[^{}]*\}', cleaned_text, re.DOTALL)
+            if not json_match:
+                # Try broader JSON extraction
+                json_match = re.search(r'\{.*\}', cleaned_text, re.DOTALL)
+            
             if json_match:
-                return json.loads(json_match.group())
+                json_str = json_match.group()
+                logger.info(f"Extracted JSON: {json_str}")
+                parsed_data = json.loads(json_str)
+                
+                # Validate required fields
+                if "question" in parsed_data and parsed_data["question"].strip():
+                    return parsed_data
+                else:
+                    logger.warning("Extracted JSON missing 'question' field")
             else:
-                logger.warning("Could not extract JSON from question response")
+                logger.warning("Could not extract JSON from response")
+            
+            # If we get here, try to extract just the question text
+            question_match = re.search(r'"question":\s*"([^"]+)"', cleaned_text)
+            if question_match:
+                question_text = question_match.group(1)
+                logger.info(f"Extracted question text: {question_text}")
                 return {
-                    "question": "Tell me about your experience with the technologies mentioned in your resume.",
+                    "question": question_text,
                     "category": "technical",
                     "difficulty": "medium",
-                    "expected_duration": 300
+                    "expected_duration": 300,
+                    "context": {
+                        "focus_area": "extracted from AI response",
+                        "reasoning": "parsed from AI response"
+                    },
+                    "follow_up_hints": [
+                        "Can you provide more details?",
+                        "What were the challenges?"
+                    ]
                 }
+            
+            logger.warning("Could not extract question from AI response")
+            return None
+            
         except Exception as e:
             logger.error(f"Failed to parse question response: {e}")
-            return {
-                "question": "Tell me about your experience with the technologies mentioned in your resume.",
-                "category": "technical",
-                "difficulty": "medium",
-                "expected_duration": 300
-            }
+            return None
     
     async def evaluate_response(
         self,
