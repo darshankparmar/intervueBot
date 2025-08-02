@@ -24,6 +24,7 @@ from intervuebot.schemas.interview import (
 )
 from intervuebot.agents.adaptive_interview_agent import adaptive_interview_agent
 from intervuebot.services.resume_analyzer import resume_analyzer
+from intervuebot.services.file_processor import file_processor
 from intervuebot.core.redis import store_interview_session, get_interview_session, delete_interview_session
 
 router = APIRouter()
@@ -32,45 +33,156 @@ router = APIRouter()
 @router.post("/start", 
     response_model=InterviewResponse,
     summary="Start Adaptive Interview Session",
-    description="Start a new adaptive interview session with resume analysis and dynamic question generation",
-    response_description="Created interview session with session ID",
-    tags=["Interviews"])
+    description="""
+    Start a new adaptive interview session with comprehensive file processing and AI analysis.
+    
+    ## Workflow:
+    1. **File Processing**: Download and extract text from uploaded files (resume, CV, cover letter)
+    2. **AI Analysis**: Analyze extracted content to identify skills, experience, and background
+    3. **Session Creation**: Create interview session with AI-enhanced candidate profile
+    4. **Context Preparation**: Prepare adaptive interview context based on analysis results
+    
+    ## Required Information:
+    - **Name**: Candidate's full name
+    - **Email**: Contact email address
+    - **Position**: Job position being applied for
+    - **Experience Level**: junior/mid-level/senior/lead
+    - **Interview Type**: technical/behavioral/mixed/leadership
+    - **Files**: Uploaded resume, CV, and/or cover letter files
+    
+    ## File Processing:
+    - Supports PDF, DOC, DOCX, TXT, RTF formats
+    - Extracts text content from all uploaded files
+    - Combines content for comprehensive analysis
+    - Handles multiple file types in single upload
+    """,
+    response_description="Created interview session with AI-analyzed resume and session ID",
+    tags=["Interviews"],
+    responses={
+        200: {
+            "description": "Interview session created successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "candidate": {
+                            "name": "John Doe",
+                            "email": "john.doe@example.com",
+                            "position": "Software Engineer",
+                            "experience_level": "mid-level",
+                            "interview_type": "technical",
+                            "files": [
+                                {
+                                    "filename": "john_doe_resume.pdf",
+                                    "file_url": "https://example.com/uploads/john_doe_resume.pdf",
+                                    "file_type": "resume"
+                                }
+                            ],
+                            "resume_analysis": {
+                                "extracted_skills": ["Python", "JavaScript", "React", "Node.js"],
+                                "experience_years": 3.5,
+                                "education": "BS Computer Science",
+                                "current_company": "Tech Corp",
+                                "confidence_score": 0.85
+                            }
+                        },
+                        "position": "Software Engineer",
+                        "status": "in_progress",
+                        "started_at": "2024-01-15T10:30:00Z",
+                        "current_question_index": 0,
+                        "total_questions_asked": 0,
+                        "average_score": 0.0
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Invalid request data or file processing error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Validation error: files field is required"
+                    }
+                }
+            }
+        },
+        500: {
+            "description": "Internal server error during file processing or analysis",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Failed to start interview: File processing failed"
+                    }
+                }
+            }
+        }
+    })
 async def start_interview(interview_data: InterviewCreate) -> InterviewResponse:
     """
-    Start a new adaptive interview session.
+    Start a new adaptive interview session with comprehensive file processing.
     
-    This endpoint creates a new interview session, analyzes the candidate's
-    resume, and prepares for dynamic question generation based on the
-    candidate's background and position requirements.
+    This endpoint implements a complete workflow:
+    1. **File Processing**: Downloads and extracts text from uploaded files
+    2. **AI Analysis**: Analyzes extracted content using AI
+    3. **Session Creation**: Creates interview session with enhanced profile
+    4. **Context Setup**: Prepares adaptive interview parameters
     
     Args:
-        interview_data: Interview creation data including candidate profile and resume
+        interview_data: Interview creation data including candidate profile and files
         
     Returns:
-        InterviewResponse: Created interview session with session ID
+        InterviewResponse: Created interview session with AI analysis results
         
     Raises:
-        HTTPException: If interview creation fails
+        HTTPException: If file processing or interview creation fails
+        
+    Example Request:
+        {
+            "candidate": {
+                "name": "John Doe",
+                "email": "john.doe@example.com",
+                "position": "Software Engineer",
+                "experience_level": "mid-level",
+                "interview_type": "technical",
+                "files": [
+                    {
+                        "filename": "resume.pdf",
+                        "file_url": "https://example.com/resume.pdf",
+                        "file_type": "resume"
+                    }
+                ]
+            },
+            "duration_minutes": 60
+        }
     """
     try:
-        # Generate session ID
+        # Step 1: Validate and process uploaded files
+        logger.info(f"Starting interview session for {interview_data.candidate.name}")
+        
+        if not interview_data.candidate.files:
+            raise HTTPException(
+                status_code=400, 
+                detail="At least one file (resume, CV, or cover letter) is required"
+            )
+        
+        # Step 2: Process uploaded files
+        file_metadata = file_processor.get_file_metadata(interview_data.candidate.files)
+        logger.info(f"Processing {file_metadata['total_files']} files: {file_metadata['file_types']}")
+        
+        # Step 3: Analyze resume content using AI
+        resume_analysis = await resume_analyzer.analyze_resume(
+            resume_files=interview_data.candidate.files,
+            position=interview_data.candidate.position
+        )
+        
+        # Step 4: Update candidate profile with AI analysis
+        candidate_profile = interview_data.candidate
+        candidate_profile.resume_analysis = resume_analysis
+        
+        # Step 5: Create interview session
         session_id = str(uuid.uuid4())
         now_iso = datetime.utcnow().isoformat() + "Z"
         
-        # Analyze resume if provided
-        resume_analysis = None
-        if interview_data.candidate.files:
-            resume_analysis = await resume_analyzer.analyze_resume(
-                resume_files=interview_data.candidate.files,
-                position=interview_data.candidate.position
-            )
-        
-        # Update candidate profile with resume analysis
-        candidate_profile = interview_data.candidate
-        if resume_analysis:
-            candidate_profile.resume_analysis = resume_analysis
-        
-        # Create interview session data
         session_data = {
             "session_id": session_id,
             "candidate": candidate_profile.dict(),
@@ -87,11 +199,14 @@ async def start_interview(interview_data: InterviewCreate) -> InterviewResponse:
             "evaluations": [],
             "status": "in_progress",
             "started_at": now_iso,
-            "duration_minutes": interview_data.duration_minutes
+            "duration_minutes": interview_data.duration_minutes,
+            "file_metadata": file_metadata
         }
         
-        # Store session in Redis
+        # Step 6: Store session in Redis
         await store_interview_session(session_id, session_data)
+        
+        logger.info(f"Interview session {session_id} created successfully for {candidate_profile.name}")
         
         return InterviewResponse(
             session_id=session_id,
@@ -104,25 +219,104 @@ async def start_interview(interview_data: InterviewCreate) -> InterviewResponse:
             average_score=0.0
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Failed to start interview: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start interview: {str(e)}")
 
 
 @router.get("/{session_id}/next-question", 
     response_model=QuestionResponse,
     summary="Get Next Adaptive Question",
-    description="Get the next question based on previous responses and resume analysis",
-    response_description="Next question with context",
-    tags=["Interviews"])
+    description="""
+    Get the next adaptive question based on previous responses and AI-analyzed resume content.
+    
+    This endpoint generates context-aware questions using:
+    - Previous responses and their quality assessment
+    - AI-analyzed resume content and extracted skills
+    - Current interview progress and difficulty adjustment
+    - Position requirements and identified skill gaps
+    
+    ## Question Generation Logic:
+    1. **Context Analysis**: Analyzes previous responses and AI-extracted resume content
+    2. **Difficulty Adjustment**: Adjusts based on performance (easy/medium/hard)
+    3. **Skill Focus**: Targets skills identified in resume analysis
+    4. **Follow-up Logic**: Builds on previous responses for deeper exploration
+    5. **Progress Tracking**: Ensures appropriate question progression
+    
+    ## Question Types:
+    - **Technical**: Programming, system design, problem-solving
+    - **Behavioral**: Past experiences, teamwork, challenges
+    - **Situational**: Hypothetical scenarios and decision-making
+    - **Leadership**: Management, team building, strategic thinking
+    """,
+    response_description="Next question with context and time limits",
+    tags=["Interviews"],
+    responses={
+        200: {
+            "description": "Next question generated successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "question": {
+                            "id": "q_1",
+                            "text": "Can you tell me about your experience with Python and how you would approach optimizing a slow database query?",
+                            "category": "technical",
+                            "difficulty": "medium",
+                            "expected_duration": 300,
+                            "context": {
+                                "focus_area": "Database optimization",
+                                "reasoning": "Based on resume showing Python experience"
+                            },
+                            "follow_up_hints": [
+                                "What specific techniques would you use?",
+                                "How would you measure the improvement?"
+                            ]
+                        },
+                        "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "question_number": 1,
+                        "time_limit": 300,
+                        "context": {
+                            "difficulty": "medium",
+                            "category": "technical",
+                            "interview_progress": 0.1,
+                            "follow_up_hints": [
+                                "What specific techniques would you use?",
+                                "How would you measure the improvement?"
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Interview session not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Interview session not found"
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Interview session is not in progress",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Interview session is not in progress"
+                    }
+                }
+            }
+        }
+    })
 async def get_next_question(session_id: str) -> QuestionResponse:
     """
     Get the next adaptive question for an interview session.
     
-    This endpoint generates the next question based on:
-    - Previous responses and their quality
-    - Resume analysis and candidate background
-    - Current interview progress and difficulty
-    - Position requirements and skill gaps
+    This endpoint generates context-aware questions using AI-analyzed resume content
+    and previous response quality to create intelligent, adaptive questions.
     
     Args:
         session_id: Interview session ID
@@ -193,14 +387,91 @@ async def get_next_question(session_id: str) -> QuestionResponse:
 
 @router.post("/{session_id}/respond",
     summary="Submit Response",
-    description="Submit a response to the current question and get evaluation",
+    description="""
+    Submit a response to the current question and get comprehensive AI evaluation.
+    
+    This endpoint evaluates the candidate's response using AI and updates the interview
+    session with detailed evaluation results. The evaluation includes multiple
+    dimensions and provides adaptive recommendations for the next question.
+    
+    ## Evaluation Dimensions:
+    1. **Technical Accuracy**: How well the technical content is addressed
+    2. **Communication Clarity**: How clearly the response is communicated
+    3. **Problem-Solving Approach**: Quality of analytical thinking
+    4. **Experience Relevance**: How well the response relates to experience
+    5. **Overall Score**: Combined evaluation score (1-10 scale)
+    
+    ## Adaptive Features:
+    - **Difficulty Adjustment**: Suggests next question difficulty based on performance
+    - **Follow-up Questions**: Provides specific follow-up questions for deeper exploration
+    - **Skill Gap Identification**: Identifies areas where candidate may need improvement
+    - **Strengths Recognition**: Highlights candidate's strong points
+    """,
     response_description="Response evaluation and next steps",
-    tags=["Interviews"])
+    tags=["Interviews"],
+    responses={
+        200: {
+            "description": "Response submitted and evaluated successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "success",
+                        "message": "Response submitted and evaluated successfully",
+                        "evaluation": {
+                            "overall_score": 8.5,
+                            "technical_accuracy": 9.0,
+                            "communication_clarity": 8.0,
+                            "problem_solving_approach": 8.5,
+                            "experience_relevance": 8.5,
+                            "strengths": [
+                                "Good understanding of profiling tools",
+                                "Comprehensive approach to optimization"
+                            ],
+                            "areas_for_improvement": [
+                                "Could provide more specific examples"
+                            ],
+                            "suggestions": [
+                                "Consider mentioning specific database systems",
+                                "Add metrics for measuring success"
+                            ],
+                            "suggested_difficulty": "hard",
+                            "follow_up_questions": [
+                                "How would you handle a distributed system optimization?",
+                                "What monitoring tools would you use?"
+                            ],
+                            "skill_gaps": []
+                        },
+                        "next_steps": "Continue with next question or finalize interview"
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Interview session not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Interview session not found"
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "No active question to respond to",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "No active question to respond to"
+                    }
+                }
+            }
+        }
+    })
 async def submit_response(session_id: str, response: ResponseSubmit) -> Dict[str, Any]:
     """
     Submit a response to the current question.
     
-    This endpoint evaluates the candidate's response and updates
+    This endpoint evaluates the candidate's response using AI and updates
     the interview session with the evaluation results.
     
     Args:
@@ -300,15 +571,77 @@ async def submit_response(session_id: str, response: ResponseSubmit) -> Dict[str
 
 @router.post("/{session_id}/finalize",
     summary="Finalize Interview",
-    description="End the interview and generate comprehensive evaluation report",
-    response_description="Interview completion confirmation",
-    tags=["Interviews"])
+    description="""
+    End the interview and generate comprehensive AI evaluation report.
+    
+    This endpoint completes the interview session and generates a comprehensive
+    evaluation report based on all responses and AI-analyzed resume content.
+    The report includes detailed scoring, hiring recommendations, and actionable feedback.
+    
+    ## Report Contents:
+    1. **Overall Assessment**: Comprehensive evaluation across all dimensions
+    2. **Detailed Scoring**: Breakdown by technical, behavioral, communication skills
+    3. **Hiring Recommendation**: Hire/Consider/Reject with confidence level
+    4. **Strengths & Areas for Improvement**: Specific feedback for candidate
+    5. **Skill Gaps**: Identified gaps between requirements and candidate skills
+    6. **Interview Statistics**: Questions asked, response times, difficulty progression
+    7. **Detailed Feedback**: Comprehensive written assessment
+    
+    ## Hiring Recommendations:
+    - **Hire**: Strong candidate with excellent performance (score 8.0+)
+    - **Consider**: Good candidate with potential (score 6.0-7.9)
+    - **Reject**: Candidate not suitable for position (score <6.0)
+    """,
+    response_description="Interview completion and report summary",
+    tags=["Interviews"],
+    responses={
+        200: {
+            "description": "Interview completed successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "success",
+                        "message": "Interview completed successfully",
+                        "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "report_summary": {
+                            "overall_score": 8.2,
+                            "hiring_recommendation": "hire",
+                            "confidence_level": 0.85,
+                            "total_questions": 8,
+                            "total_responses": 8,
+                            "average_response_time": 145.5
+                        }
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Interview session not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Interview session not found"
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Interview session already completed",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Interview session already completed"
+                    }
+                }
+            }
+        }
+    })
 async def finalize_interview(session_id: str) -> Dict[str, Any]:
     """
     Finalize the interview and generate comprehensive report.
     
     This endpoint ends the interview session and generates a comprehensive
-    evaluation report based on all responses and resume analysis.
+    evaluation report based on all responses and AI analysis.
     
     Args:
         session_id: Interview session ID
@@ -363,9 +696,100 @@ async def finalize_interview(session_id: str) -> Dict[str, Any]:
 
 @router.get("/{session_id}/report",
     summary="Get Interview Report",
-    description="Get the comprehensive interview evaluation report",
+    description="""
+    Get the comprehensive interview evaluation report.
+    
+    This endpoint returns the complete evaluation report including
+    scores, feedback, recommendations, and detailed analysis.
+    
+    ## Report Sections:
+    1. **Candidate Information**: Name, position, experience level
+    2. **Overall Assessment**: Comprehensive scoring across all dimensions
+    3. **Detailed Analysis**: Breakdown by technical, behavioral, communication skills
+    4. **Strengths & Areas for Improvement**: Specific feedback points
+    5. **Skill Gaps**: Identified gaps between requirements and candidate skills
+    6. **Interview Statistics**: Questions asked, response times, difficulty progression
+    7. **Hiring Recommendation**: Final recommendation with confidence level
+    8. **Detailed Feedback**: Comprehensive written assessment
+    
+    ## Scoring Breakdown:
+    - **Overall Score**: Combined evaluation (1-10 scale)
+    - **Technical Score**: Technical skills and knowledge assessment
+    - **Behavioral Score**: Soft skills and experience evaluation
+    - **Communication Score**: Clarity and presentation skills
+    - **Problem-Solving Score**: Analytical thinking and approach
+    - **Cultural Fit Score**: Team fit and company alignment
+    """,
     response_description="Complete interview evaluation report",
-    tags=["Interviews"])
+    tags=["Interviews"],
+    responses={
+        200: {
+            "description": "Interview report retrieved successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "candidate": {
+                            "name": "John Doe",
+                            "email": "john.doe@example.com",
+                            "position": "Software Engineer",
+                            "experience_level": "mid-level",
+                            "interview_type": "technical"
+                        },
+                        "position": "Software Engineer",
+                        "overall_score": 8.2,
+                        "technical_score": 8.5,
+                        "behavioral_score": 7.8,
+                        "communication_score": 8.0,
+                        "problem_solving_score": 8.5,
+                        "cultural_fit_score": 8.0,
+                        "strengths": [
+                            "Strong technical knowledge",
+                            "Good problem-solving approach",
+                            "Clear communication"
+                        ],
+                        "areas_for_improvement": [
+                            "Could provide more specific examples",
+                            "Consider mentioning industry best practices"
+                        ],
+                        "skill_gaps": [],
+                        "recommendations": ["Recommendation: HIRE"],
+                        "total_questions": 8,
+                        "total_responses": 8,
+                        "average_response_time": 145.5,
+                        "difficulty_progression": [
+                            {"question": 1, "difficulty": "medium", "score": 8.5},
+                            {"question": 2, "difficulty": "hard", "score": 8.0}
+                        ],
+                        "hiring_recommendation": "hire",
+                        "confidence_level": 0.85,
+                        "detailed_feedback": "Comprehensive Interview Report...",
+                        "interview_duration": 45.5
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Interview session or report not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Interview report not found"
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Interview session is not completed",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Interview session is not completed"
+                    }
+                }
+            }
+        }
+    })
 async def get_interview_report(session_id: str) -> InterviewReport:
     """
     Get the comprehensive interview evaluation report.

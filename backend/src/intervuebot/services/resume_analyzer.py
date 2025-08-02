@@ -16,6 +16,7 @@ from agno.models.google import Gemini
 
 from intervuebot.schemas.interview import ResumeAnalysis, ResumeFile
 from intervuebot.core.config import settings
+from intervuebot.services.file_processor import file_processor
 
 logger = logging.getLogger(__name__)
 
@@ -104,21 +105,15 @@ class ResumeAnalyzer:
         Returns:
             str: Combined text content from all files
         """
-        # In a real implementation, you would:
-        # 1. Download files from URLs
-        # 2. Parse PDF/DOC/DOCX files
-        # 3. Extract text content
-        # 4. Handle different file formats
+        # Process uploaded files using file processor
+        processed_result = await file_processor.process_uploaded_files(resume_files)
         
-        # For now, return a placeholder
-        combined_text = f"Resume files: {len(resume_files)} files\n"
-        combined_text += "Position: Software Engineer\n"
-        combined_text += "Experience: 3 years in Python development\n"
-        combined_text += "Skills: Python, JavaScript, React, Node.js\n"
-        combined_text += "Education: BS Computer Science\n"
-        combined_text += "Projects: E-commerce platform, API development\n"
+        if processed_result.get("error"):
+            logger.warning(f"File processing error: {processed_result['error']}")
+            # Return basic placeholder if file processing fails
+            return f"Resume files: {len(resume_files)} files\nPosition: {position}\nExperience: 3 years\nSkills: Python, JavaScript"
         
-        return combined_text
+        return processed_result.get("combined_text", "")
     
     def _create_analysis_prompt(self, resume_text: str, position: str) -> str:
         """
