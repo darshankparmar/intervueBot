@@ -6,6 +6,7 @@ with resume analysis and dynamic question generation.
 """
 
 import uuid
+import logging
 from typing import Dict, List, Any
 from datetime import datetime
 
@@ -17,6 +18,7 @@ from intervuebot.schemas.interview import (
     QuestionResponse,
     ResponseSubmit,
     CandidateProfile,
+    CandidateProfileWithAnalysis,
     InterviewSession,
     Response,
     InterviewReport,
@@ -26,6 +28,8 @@ from intervuebot.agents.adaptive_interview_agent import adaptive_interview_agent
 from intervuebot.services.resume_analyzer import resume_analyzer
 from intervuebot.services.file_processor import file_processor
 from intervuebot.core.redis import store_interview_session, get_interview_session, delete_interview_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -175,9 +179,16 @@ async def start_interview(interview_data: InterviewCreate) -> InterviewResponse:
             position=interview_data.candidate.position
         )
         
-        # Step 4: Update candidate profile with AI analysis
-        candidate_profile = interview_data.candidate
-        candidate_profile.resume_analysis = resume_analysis
+        # Step 4: Create candidate profile with AI analysis
+        candidate_profile_with_analysis = CandidateProfileWithAnalysis(
+            name=interview_data.candidate.name,
+            email=interview_data.candidate.email,
+            position=interview_data.candidate.position,
+            experience_level=interview_data.candidate.experience_level,
+            interview_type=interview_data.candidate.interview_type,
+            files=interview_data.candidate.files,
+            resume_analysis=resume_analysis
+        )
         
         # Step 5: Create interview session
         session_id = str(uuid.uuid4())
@@ -185,7 +196,7 @@ async def start_interview(interview_data: InterviewCreate) -> InterviewResponse:
         
         session_data = {
             "session_id": session_id,
-            "candidate": candidate_profile.dict(),
+            "candidate": candidate_profile_with_analysis.dict(),
             "position": interview_data.candidate.position,
             "interview_type": interview_data.candidate.interview_type.value,
             "current_phase": "introduction",
@@ -206,11 +217,11 @@ async def start_interview(interview_data: InterviewCreate) -> InterviewResponse:
         # Step 6: Store session in Redis
         await store_interview_session(session_id, session_data)
         
-        logger.info(f"Interview session {session_id} created successfully for {candidate_profile.name}")
+        logger.info(f"Interview session {session_id} created successfully for {candidate_profile_with_analysis.name}")
         
         return InterviewResponse(
             session_id=session_id,
-            candidate=candidate_profile,
+            candidate=candidate_profile_with_analysis,
             position=interview_data.candidate.position,
             status="in_progress",
             started_at=now_iso,
@@ -337,12 +348,9 @@ async def get_next_question(session_id: str) -> QuestionResponse:
             raise HTTPException(status_code=400, detail="Interview session is not in progress")
         
         # Convert session data to objects
-        candidate_profile = CandidateProfile(**session_data["candidate"])
+        candidate_profile = CandidateProfileWithAnalysis(**session_data["candidate"])
         previous_responses = [Response(**r) for r in session_data["responses"]]
-        resume_analysis = None
-        if session_data["candidate"].get("resume_analysis"):
-            from intervuebot.schemas.interview import ResumeAnalysis
-            resume_analysis = ResumeAnalysis(**session_data["candidate"]["resume_analysis"])
+        resume_analysis = candidate_profile.resume_analysis
         
         # Calculate interview progress
         total_questions = session_data["total_questions_asked"]
@@ -503,11 +511,8 @@ async def submit_response(session_id: str, response: ResponseSubmit) -> Dict[str
         current_question = Question(**current_question_data)
         
         # Convert session data to objects for evaluation
-        candidate_profile = CandidateProfile(**session_data["candidate"])
-        resume_analysis = None
-        if session_data["candidate"].get("resume_analysis"):
-            from intervuebot.schemas.interview import ResumeAnalysis
-            resume_analysis = ResumeAnalysis(**session_data["candidate"]["resume_analysis"])
+        candidate_profile = CandidateProfileWithAnalysis(**session_data["candidate"])
+        resume_analysis = candidate_profile.resume_analysis
         
         # Evaluate response using adaptive agent
         evaluation = await adaptive_interview_agent.evaluate_response(
@@ -884,7 +889,7 @@ async def _generate_comprehensive_report(session_data: Dict[str, Any]) -> Interv
     
     return InterviewReport(
         session_id=session_data["session_id"],
-        candidate=CandidateProfile(**session_data["candidate"]),
+        candidate=CandidateProfileWithAnalysis(**session_data["candidate"]),
         position=session_data["position"],
         overall_score=average_score,
         technical_score=average_score,  # Simplified - in real implementation, calculate from evaluations

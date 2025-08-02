@@ -57,7 +57,7 @@ class ResumeAnalysis(BaseModel):
 
 
 class CandidateProfile(BaseModel):
-    """Simplified candidate profile with only essential information."""
+    """Simplified candidate profile with only essential information from UI."""
     
     # Basic information
     name: str = Field(..., description="Candidate's full name")
@@ -70,9 +70,6 @@ class CandidateProfile(BaseModel):
     
     # Resume files
     files: List[ResumeFile] = Field(..., description="Uploaded files (resume, CV, cover letter)")
-    
-    # Resume analysis (populated by AI)
-    resume_analysis: Optional[ResumeAnalysis] = Field(None, description="Resume analysis results")
 
 
 class InterviewCreate(BaseModel):
@@ -99,7 +96,7 @@ class Response(BaseModel):
     
     question_id: str = Field(..., description="ID of the question being answered")
     answer: str = Field(..., description="Candidate's answer")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z", description="Response timestamp")
     time_taken: int = Field(..., ge=0, description="Time taken to answer in seconds")
     evaluation_score: Optional[float] = Field(None, ge=0, le=10, description="Response evaluation score")
     evaluation_details: Optional[Dict[str, Any]] = Field(None, description="Detailed evaluation breakdown")
@@ -113,11 +110,26 @@ class ResponseSubmit(BaseModel):
     time_taken: int = Field(..., ge=0, description="Time taken to answer in seconds")
 
 
+class CandidateProfileWithAnalysis(BaseModel):
+    """Candidate profile with AI-generated resume analysis."""
+    
+    # Basic information from UI
+    name: str = Field(..., description="Candidate's full name")
+    email: str = Field(..., description="Candidate's email address")
+    position: str = Field(..., description="Position being interviewed for")
+    experience_level: ExperienceLevel = Field(..., description="Experience level")
+    interview_type: InterviewType = Field(..., description="Type of interview")
+    files: List[ResumeFile] = Field(..., description="Uploaded files (resume, CV, cover letter)")
+    
+    # AI-generated resume analysis
+    resume_analysis: Optional[ResumeAnalysis] = Field(None, description="AI-generated resume analysis results")
+
+
 class InterviewSession(BaseModel):
     """Enhanced interview session model."""
     
     session_id: str = Field(..., description="Unique session identifier")
-    candidate: CandidateProfile = Field(..., description="Candidate information")
+    candidate: CandidateProfileWithAnalysis = Field(..., description="Candidate information with AI analysis")
     position: str = Field(..., description="Position being interviewed for")
     interview_type: InterviewType = Field(..., description="Type of interview")
     
@@ -138,8 +150,8 @@ class InterviewSession(BaseModel):
     
     # Session metadata
     status: str = Field(default="in_progress", description="Interview status")
-    started_at: datetime = Field(..., description="Interview start time")
-    ended_at: Optional[datetime] = Field(None, description="Interview end time")
+    started_at: str = Field(..., description="Interview start time")
+    ended_at: Optional[str] = Field(None, description="Interview end time")
     duration_minutes: int = Field(..., description="Interview duration in minutes")
 
 
@@ -147,10 +159,10 @@ class InterviewResponse(BaseModel):
     """Response model for interview session."""
     
     session_id: str = Field(..., description="Unique session identifier")
-    candidate: CandidateProfile = Field(..., description="Candidate information")
+    candidate: CandidateProfileWithAnalysis = Field(..., description="Candidate information with AI analysis")
     position: str = Field(..., description="Position being interviewed for")
     status: str = Field(..., description="Interview status")
-    started_at: datetime = Field(..., description="Interview start time")
+    started_at: str = Field(..., description="Interview start time")
     current_question_index: int = Field(default=0, description="Current question index")
     total_questions_asked: int = Field(default=0, description="Total questions asked")
     average_score: float = Field(default=0.0, description="Average response score")
@@ -194,7 +206,7 @@ class InterviewReport(BaseModel):
     """Comprehensive interview evaluation report."""
     
     session_id: str = Field(..., description="Interview session ID")
-    candidate: CandidateProfile = Field(..., description="Candidate information")
+    candidate: CandidateProfileWithAnalysis = Field(..., description="Candidate information with AI analysis")
     position: str = Field(..., description="Position being interviewed for")
     
     # Overall assessment
@@ -223,5 +235,5 @@ class InterviewReport(BaseModel):
     detailed_feedback: str = Field(..., description="Detailed feedback and assessment")
     
     # Metadata
-    generated_at: datetime = Field(default_factory=datetime.utcnow, description="Report generation time")
+    generated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z", description="Report generation time")
     interview_duration: float = Field(..., description="Total interview duration in minutes") 
