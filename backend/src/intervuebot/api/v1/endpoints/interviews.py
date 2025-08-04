@@ -9,8 +9,11 @@ import uuid
 import logging
 from typing import Dict, List, Any
 from datetime import datetime
+import logging
 
 from fastapi import APIRouter, HTTPException
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 
 from intervuebot.schemas.interview import (
     InterviewCreate,
@@ -36,6 +39,7 @@ router = APIRouter()
 
 @router.post("/start", 
     response_model=InterviewResponse,
+    # response_model=Dict,
     summary="Start Adaptive Interview Session",
     description="""
     Start a new adaptive interview session with comprehensive file processing and AI analysis.
@@ -416,66 +420,8 @@ async def get_next_question(session_id: str) -> QuestionResponse:
     - **Strengths Recognition**: Highlights candidate's strong points
     """,
     response_description="Response evaluation and next steps",
-    tags=["Interviews"],
-    responses={
-        200: {
-            "description": "Response submitted and evaluated successfully",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "status": "success",
-                        "message": "Response submitted and evaluated successfully",
-                        "evaluation": {
-                            "overall_score": 8.5,
-                            "technical_accuracy": 9.0,
-                            "communication_clarity": 8.0,
-                            "problem_solving_approach": 8.5,
-                            "experience_relevance": 8.5,
-                            "strengths": [
-                                "Good understanding of profiling tools",
-                                "Comprehensive approach to optimization"
-                            ],
-                            "areas_for_improvement": [
-                                "Could provide more specific examples"
-                            ],
-                            "suggestions": [
-                                "Consider mentioning specific database systems",
-                                "Add metrics for measuring success"
-                            ],
-                            "suggested_difficulty": "hard",
-                            "follow_up_questions": [
-                                "How would you handle a distributed system optimization?",
-                                "What monitoring tools would you use?"
-                            ],
-                            "skill_gaps": []
-                        },
-                        "next_steps": "Continue with next question or finalize interview"
-                    }
-                }
-            }
-        },
-        404: {
-            "description": "Interview session not found",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": "Interview session not found"
-                    }
-                }
-            }
-        },
-        400: {
-            "description": "No active question to respond to",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": "No active question to respond to"
-                    }
-                }
-            }
-        }
-    })
-async def submit_response(session_id: str, response: ResponseSubmit) -> Dict[str, Any]:
+    tags=["Interviews"])
+async def submit_response(session_id: str, response: ResponseSubmit) -> JSONResponse:
     """
     Submit a response to the current question.
     
@@ -487,7 +433,7 @@ async def submit_response(session_id: str, response: ResponseSubmit) -> Dict[str
         response: Candidate response data
         
     Returns:
-        Dict[str, Any]: Response evaluation and next steps
+        JSONResponse: Response evaluation and next steps
         
     Raises:
         HTTPException: If session not found or no active question
@@ -549,24 +495,17 @@ async def submit_response(session_id: str, response: ResponseSubmit) -> Dict[str
         # Update session in Redis
         await store_interview_session(session_id, session_data)
         
-        return {
-            "status": "success",
-            "message": "Response submitted and evaluated successfully",
-            "evaluation": {
-                "overall_score": evaluation.overall_score,
-                "technical_accuracy": evaluation.technical_accuracy,
-                "communication_clarity": evaluation.communication_clarity,
-                "problem_solving_approach": evaluation.problem_solving_approach,
-                "experience_relevance": evaluation.experience_relevance,
-                "strengths": evaluation.strengths,
-                "areas_for_improvement": evaluation.areas_for_improvement,
-                "suggestions": evaluation.suggestions,
-                "suggested_difficulty": evaluation.suggested_difficulty.value,
-                "follow_up_questions": evaluation.follow_up_questions,
-                "skill_gaps": evaluation.skill_gaps
-            },
+        response_data = {
+            "evaluation": evaluation,
             "next_steps": "Continue with next question or finalize interview"
         }
+        logging.warning(f"Returning from /respond: {response_data}")
+        try:
+            encoded = jsonable_encoder(response_data)
+        except Exception as e:
+            logging.error(f"jsonable_encoder failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Serialization error: {e}")
+        return JSONResponse(content=encoded)
         
     except HTTPException:
         raise
