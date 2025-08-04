@@ -5,9 +5,13 @@ This module handles interview-related endpoints including starting interviews,
 getting questions, submitting responses, and generating reports.
 """
 
+import uuid
+from typing import Dict, List, Any
+from datetime import datetime
 import logging
-from typing import Dict, Any, List
-from fastapi import APIRouter, HTTPException, Depends
+
+from fastapi import APIRouter, HTTPException
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from intervuebot.schemas.interview import (
@@ -37,97 +41,18 @@ router = APIRouter()
 
 @router.post("/start",
     response_model=InterviewResponse,
-    summary="Start Interview",
-    description="""
-    Start a new interview session with candidate information and uploaded files.
-    
-    This endpoint:
-    1. Processes uploaded files (resumes, CVs, cover letters)
-    2. Analyzes resume content using AI
-    3. Creates an interview session
-    4. Initializes the adaptive interview agent
-    5. Returns session information for the interview flow
-    
-    ## File Processing:
-    - Supports PDF, DOC, DOCX, TXT, RTF formats
-    - Maximum 10MB per file
-    - Automatic file type detection and organization
-    
-    ## Resume Analysis:
-    - Extracts skills, experience, education
-    - Identifies technologies and certifications
-    - Generates confidence scores for analysis
-    
-    ## Session Management:
-    - Creates unique session ID
-    - Stores candidate profile and analysis
-    - Initializes interview state and progress tracking
-    """,
-    response_description="Interview session information with candidate profile and analysis",
-    tags=["Interviews"],
-    responses={
-        200: {
-            "description": "Interview started successfully",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "session_id": "session_123456789",
-                        "candidate": {
-                            "name": "John Doe",
-                            "email": "john.doe@example.com",
-                            "position": "Software Engineer",
-                            "experience_level": "mid-level",
-                            "interview_type": "technical",
-                            "files": [
-                                {
-                                    "filename": "john_doe_resume.pdf",
-                                    "file_url": "/uploads/resumes/550e8400-e29b-41d4-a716-446655440000.pdf",
-                                    "file_type": "resume"
-                                }
-                            ],
-                            "resume_analysis": {
-                                "extracted_skills": ["Python", "React", "AWS"],
-                                "experience_years": 3,
-                                "confidence_score": 0.85
-                            }
-                        },
-                        "position": "Software Engineer",
-                        "status": "started",
-                        "started_at": "2024-01-15T10:30:00Z",
-                        "current_question_index": 0,
-                        "total_questions_asked": 0,
-                        "average_score": 0.0
-                    }
-                }
-            }
-        },
-        400: {
-            "description": "Invalid request data",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": "No files provided or invalid candidate information"
-                    }
-                }
-            }
-        },
-        500: {
-            "description": "Internal server error",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": "Failed to start interview: Internal server error"
-                    }
-                }
-            }
-        }
-    })
-async def start_interview(request: InterviewCreate) -> InterviewResponse:
+    # response_model=Dict,
+    summary="Start Adaptive Interview Session",
+    description="Start a new adaptive interview session with resume analysis and dynamic question generation",
+    response_description="Created interview session with session ID",
+    tags=["Interviews"])
+async def start_interview(interview_data: InterviewCreate) -> InterviewResponse:
     """
-    Start a new interview session.
+    Start a new adaptive interview session.
     
-    This endpoint processes the candidate information and uploaded files,
-    analyzes the resume content, and creates an interview session.
+    This endpoint creates a new interview session, analyzes the candidate's
+    resume, and prepares for dynamic question generation based on the
+    candidate's background and position requirements.
     
     Args:
         request: Interview creation request with candidate info and files
@@ -387,76 +312,10 @@ async def get_next_question(session_id: str) -> QuestionResponse:
 @router.post("/{session_id}/respond",
     response_model=SubmitResponseResult,
     summary="Submit Response",
-    description="""
-    Submit a response to the current question and get evaluation.
-    
-    This endpoint:
-    1. Evaluates the candidate's response using AI
-    2. Provides detailed scoring across multiple dimensions
-    3. Suggests follow-up questions and areas for improvement
-    4. Updates the interview session with response data
-    
-    ## Evaluation Criteria:
-    - Technical accuracy and depth
-    - Communication clarity and structure
-    - Problem-solving approach and methodology
-    - Experience relevance and practical application
-    
-    ## Response Features:
-    - Real-time scoring and feedback
-    - Adaptive difficulty suggestions
-    - Skill gap identification
-    - Performance tracking over time
-    """,
-    response_description="Response evaluation with detailed feedback and scoring",
-    tags=["Interviews"],
-    responses={
-        200: {
-            "description": "Response submitted and evaluated successfully",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "status": "success",
-                        "message": "Response evaluated successfully",
-                        "evaluation": {
-                            "overall_score": 8.5,
-                            "technical_accuracy": 9.0,
-                            "communication_clarity": 8.0,
-                            "problem_solving_approach": 8.5,
-                            "experience_relevance": 8.0,
-                            "strengths": [
-                                "Strong technical knowledge",
-                                "Clear communication"
-                            ],
-                            "areas_for_improvement": [
-                                "Could provide more examples"
-                            ],
-                            "suggestions": [
-                                "Consider real-world applications"
-                            ],
-                            "suggested_difficulty": "hard",
-                            "follow_up_questions": [
-                                "How would you handle edge cases?"
-                            ],
-                            "skill_gaps": ["Advanced optimization"]
-                        },
-                        "next_steps": "Continue with harder questions"
-                    }
-                }
-            }
-        },
-        404: {
-            "description": "Session not found",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": "Interview session not found"
-                    }
-                }
-            }
-        }
-    })
-async def submit_response(session_id: str, request: ResponseSubmit) -> SubmitResponseResult:
+    description="Submit a response to the current question and get evaluation",
+    response_description="Response evaluation and next steps",
+    tags=["Interviews"])
+async def submit_response(session_id: str, response: ResponseSubmit) -> JSONResponse:
     """
     Submit a response to the current question.
     
@@ -465,7 +324,7 @@ async def submit_response(session_id: str, request: ResponseSubmit) -> SubmitRes
         request: Response submission data
         
     Returns:
-        SubmitResponseResult: Response evaluation and feedback
+        JSONResponse: Response evaluation and next steps
         
     Raises:
         HTTPException: If session not found or evaluation fails
@@ -515,17 +374,27 @@ async def submit_response(session_id: str, request: ResponseSubmit) -> SubmitRes
         await store_interview_session(session_id, {"responses": str(responses)})
         
         # Update average score
-        current_avg = float(session_data.get("average_score", 0.0))
-        total_responses = len(responses)
-        new_avg = ((current_avg * (total_responses - 1)) + evaluation.overall_score) / total_responses
-        await store_interview_session(session_id, {"average_score": new_avg})
+        scores = [r.get("evaluation_score", 0) for r in session_data["responses"] if r.get("evaluation_score")]
+        if scores:
+            session_data["average_score"] = sum(scores) / len(scores)
         
-        return SubmitResponseResult(
-            status="success",
-            message="Response evaluated successfully",
-            evaluation=evaluation,
-            next_steps="Continue with next question"
-        )
+        # Update difficulty based on evaluation
+        session_data["current_difficulty"] = evaluation.suggested_difficulty.value
+        
+        # Update session in Redis
+        await store_interview_session(session_id, session_data)
+        
+        response_data = {
+            "evaluation": evaluation,
+            "next_steps": "Continue with next question or finalize interview"
+        }
+        logging.warning(f"Returning from /respond: {response_data}")
+        try:
+            encoded = jsonable_encoder(response_data)
+        except Exception as e:
+            logging.error(f"jsonable_encoder failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Serialization error: {e}")
+        return JSONResponse(content=encoded)
         
     except HTTPException:
         raise

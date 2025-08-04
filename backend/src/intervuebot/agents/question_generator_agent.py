@@ -28,7 +28,7 @@ class QuestionGeneratorAgent:
         """Initialize the question generator agent."""
         # Initialize LLM with Google Gemini
         self.agent = Agent(
-            model=Gemini(id="gemini-2.0-flash-lite"),
+            model=Gemini(id="gemini-2.0-flash-lite", api_key=settings.GOOGLE_API_KEY),
             name="QuestionBot",
             role="Dynamic Interview Question Generator",
             goal="Generate relevant, engaging, and adaptive interview questions that effectively assess candidate skills and fit",
@@ -41,7 +41,7 @@ class QuestionGeneratorAgent:
             markdown=True,
         )
     
-    def generate_technical_question(
+    async def generate_technical_question(
         self,
         position: str,
         difficulty: str,
@@ -80,7 +80,7 @@ class QuestionGeneratorAgent:
         agent_response = self.agent.run(prompt)
         
         return {
-            "question": agent_response.content,
+            "question": agent_response.content if hasattr(agent_response, 'content') else str(agent_response),
             "expected_points": ["Point 1", "Point 2"],
             "time_estimate": 5,
             "skills_tested": skills[:2],
@@ -88,7 +88,7 @@ class QuestionGeneratorAgent:
             "difficulty": difficulty
         }
     
-    def generate_question_sequence(
+    async def generate_question_sequence(
         self,
         position: str,
         interview_type: str,
@@ -125,36 +125,40 @@ class QuestionGeneratorAgent:
         # Generate questions for each category
         for category, count in question_distribution.items():
             for i in range(count):
-                if category == "technical":
-                    question = self.generate_technical_question(
-                        position=position,
-                        difficulty=current_difficulty,
-                        skills=required_skills,
-                        experience_level=experience_level
-                    )
-                elif category == "behavioral":
-                    competencies = ["leadership", "teamwork", "problem-solving", "communication"]
-                    competency = competencies[i % len(competencies)]
-                    question = self.generate_behavioral_question(
-                        position=position,
-                        competency=competency,
-                        experience_level=experience_level
-                    )
-                else:  # situational
-                    scenario_types = ["conflict", "challenge", "deadline", "innovation"]
-                    scenario_type = scenario_types[i % len(scenario_types)]
-                    question = self.generate_situational_question(
-                        position=position,
-                        scenario_type=scenario_type,
-                        difficulty=current_difficulty
-                    )
-                
-                questions.append(question)
+                try:
+                    if category == "technical":
+                        question = await self.generate_technical_question(
+                            position=position,
+                            difficulty=current_difficulty,
+                            skills=required_skills,
+                            experience_level=experience_level
+                        )
+                    elif category == "behavioral":
+                        competencies = ["leadership", "teamwork", "problem-solving", "communication"]
+                        competency = competencies[i % len(competencies)]
+                        question = await self.generate_behavioral_question(
+                            position=position,
+                            competency=competency,
+                            experience_level=experience_level
+                        )
+                    else:  # situational
+                        scenario_types = ["conflict", "challenge", "deadline", "innovation"]
+                        scenario_type = scenario_types[i % len(scenario_types)]
+                        question = await self.generate_situational_question(
+                            position=position,
+                            scenario_type=scenario_type,
+                            difficulty=current_difficulty
+                        )
+                    
+                    questions.append(question)
+                except Exception as e:
+                    logger.error(f"Error generating {category} question: {str(e)}")
+                    continue
         
         logger.info(f"Generated {len(questions)} questions for {position}")
         return questions
     
-    def generate_behavioral_question(
+    async def generate_behavioral_question(
         self,
         position: str,
         competency: str,
@@ -180,7 +184,7 @@ class QuestionGeneratorAgent:
         agent_response = self.agent.run(prompt)
         
         return {
-            "question": agent_response.content,
+            "question": agent_response.content if hasattr(agent_response, 'content') else str(agent_response),
             "what_to_look_for": ["Specific examples", "Clear outcomes"],
             "red_flags": ["Vague answers", "No specific examples"],
             "time_estimate": 3,
@@ -188,7 +192,7 @@ class QuestionGeneratorAgent:
             "competency": competency
         }
     
-    def generate_situational_question(
+    async def generate_situational_question(
         self,
         position: str,
         scenario_type: str,
@@ -214,7 +218,7 @@ class QuestionGeneratorAgent:
         agent_response = self.agent.run(prompt)
         
         return {
-            "question": agent_response.content,
+            "question": agent_response.content if hasattr(agent_response, 'content') else str(agent_response),
             "expected_approach": ["Analysis", "Action plan"],
             "time_estimate": 4,
             "category": "situational",

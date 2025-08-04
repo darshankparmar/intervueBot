@@ -86,7 +86,7 @@ class AdaptiveInterviewAgent:
             
             # Generate question using AI
             question_prompt = self._create_question_prompt(context)
-            question_response = await self.agent.run(question_prompt)
+            question_response = self.agent.run(question_prompt)
             
             logger.info(f"AI response: {question_response.content}")
             
@@ -438,7 +438,7 @@ class AdaptiveInterviewAgent:
             
             # Generate evaluation using AI
             evaluation_prompt = self._create_evaluation_prompt(context)
-            evaluation_response = await self.agent.run(evaluation_prompt)
+            evaluation_response = self.agent.run(evaluation_prompt)
             
             # Parse evaluation from AI response
             evaluation_data = self._parse_evaluation_response(evaluation_response.content)

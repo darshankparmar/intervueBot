@@ -64,7 +64,7 @@ class ResumeAnalyzer:
             
             # Analyze resume content using AI
             analysis_prompt = self._create_analysis_prompt(resume_text, position)
-            analysis_response = await self.agent.run(analysis_prompt)
+            analysis_response = self.agent.run(analysis_prompt)
             
             # Parse AI response into structured data
             analysis_data = self._parse_analysis_response(analysis_response.content)
