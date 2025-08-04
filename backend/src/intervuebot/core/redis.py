@@ -4,7 +4,7 @@ Redis connection and utility functions.
 This module provides Redis connection management and common utility
 functions for caching, session management, and real-time features.
 """
-
+from fastapi.encoders import jsonable_encoder
 import json
 import logging
 from typing import Any, Dict, List, Optional, Union
@@ -79,7 +79,8 @@ async def store_interview_session(session_id: str, session_data: Dict[str, Any],
     """
     client = await get_redis_client()
     key = f"interview_session:{session_id}"
-    await client.setex(key, ttl, json.dumps(session_data))
+    encoded_data = jsonable_encoder(session_data)
+    await client.setex(key, ttl, json.dumps(encoded_data))
 
 
 async def get_interview_session(session_id: str) -> Optional[Dict[str, Any]]:

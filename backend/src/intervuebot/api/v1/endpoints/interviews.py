@@ -8,8 +8,11 @@ with resume analysis and dynamic question generation.
 import uuid
 from typing import Dict, List, Any
 from datetime import datetime
+import logging
 
 from fastapi import APIRouter, HTTPException
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 
 from intervuebot.schemas.interview import (
     InterviewCreate,
@@ -31,6 +34,7 @@ router = APIRouter()
 
 @router.post("/start", 
     response_model=InterviewResponse,
+    # response_model=Dict,
     summary="Start Adaptive Interview Session",
     description="Start a new adaptive interview session with resume analysis and dynamic question generation",
     response_description="Created interview session with session ID",
@@ -196,7 +200,7 @@ async def get_next_question(session_id: str) -> QuestionResponse:
     description="Submit a response to the current question and get evaluation",
     response_description="Response evaluation and next steps",
     tags=["Interviews"])
-async def submit_response(session_id: str, response: ResponseSubmit) -> Dict[str, Any]:
+async def submit_response(session_id: str, response: ResponseSubmit) -> JSONResponse:
     """
     Submit a response to the current question.
     
@@ -208,7 +212,7 @@ async def submit_response(session_id: str, response: ResponseSubmit) -> Dict[str
         response: Candidate response data
         
     Returns:
-        Dict[str, Any]: Response evaluation and next steps
+        JSONResponse: Response evaluation and next steps
         
     Raises:
         HTTPException: If session not found or no active question
@@ -273,24 +277,17 @@ async def submit_response(session_id: str, response: ResponseSubmit) -> Dict[str
         # Update session in Redis
         await store_interview_session(session_id, session_data)
         
-        return {
-            "status": "success",
-            "message": "Response submitted and evaluated successfully",
-            "evaluation": {
-                "overall_score": evaluation.overall_score,
-                "technical_accuracy": evaluation.technical_accuracy,
-                "communication_clarity": evaluation.communication_clarity,
-                "problem_solving_approach": evaluation.problem_solving_approach,
-                "experience_relevance": evaluation.experience_relevance,
-                "strengths": evaluation.strengths,
-                "areas_for_improvement": evaluation.areas_for_improvement,
-                "suggestions": evaluation.suggestions,
-                "suggested_difficulty": evaluation.suggested_difficulty.value,
-                "follow_up_questions": evaluation.follow_up_questions,
-                "skill_gaps": evaluation.skill_gaps
-            },
+        response_data = {
+            "evaluation": evaluation,
             "next_steps": "Continue with next question or finalize interview"
         }
+        logging.warning(f"Returning from /respond: {response_data}")
+        try:
+            encoded = jsonable_encoder(response_data)
+        except Exception as e:
+            logging.error(f"jsonable_encoder failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Serialization error: {e}")
+        return JSONResponse(content=encoded)
         
     except HTTPException:
         raise
