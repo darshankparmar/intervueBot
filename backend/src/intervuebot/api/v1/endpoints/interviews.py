@@ -46,9 +46,9 @@ router = APIRouter()
     description="Start a new adaptive interview session with resume analysis and dynamic question generation",
     response_description="Created interview session with session ID",
     tags=["Interviews"])
-async def start_interview(interview_data: InterviewCreate) -> InterviewResponse:
+async def start_interview(request: InterviewCreate) -> InterviewResponse:
     """
-    Start a new adaptive interview session.
+    Start  a new adaptive interview session.
     
     This endpoint creates a new interview session, analyzes the candidate's
     resume, and prepares for dynamic question generation based on the
@@ -315,7 +315,7 @@ async def get_next_question(session_id: str) -> QuestionResponse:
     description="Submit a response to the current question and get evaluation",
     response_description="Response evaluation and next steps",
     tags=["Interviews"])
-async def submit_response(session_id: str, response: ResponseSubmit) -> JSONResponse:
+async def submit_response(session_id: str, request: ResponseSubmit) -> JSONResponse:
     """
     Submit a response to the current question.
     
