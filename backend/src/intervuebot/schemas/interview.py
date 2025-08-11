@@ -9,6 +9,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 from enum import Enum
+from intervuebot.schemas.file import FileReference
 
 
 class ExperienceLevel(str, Enum):
@@ -79,7 +80,7 @@ class CandidateProfile(BaseModel):
     position: str = Field(..., description="Position being applied for")
     experience_level: ExperienceLevel = Field(..., description="Experience level")
     interview_type: InterviewType = Field(..., description="Type of interview")
-    files: List[UploadedFileData] = Field(default_factory=list, description="Uploaded resume files")
+    files: List[FileReference] = Field(default_factory=list, description="Uploaded file references")
 
 
 class CandidateProfileWithAnalysis(CandidateProfile):

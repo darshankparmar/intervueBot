@@ -27,12 +27,13 @@ from intervuebot.schemas.interview import (
     UploadedFileData,
     CandidateProfileWithAnalysis,
     Question,
+    FileReference,
 )
-from intervuebot.services.file_upload_service import file_upload_service
-from intervuebot.services.resume_analyzer import resume_analyzer
-from intervuebot.agents.adaptive_interview_agent import adaptive_interview_agent
-from intervuebot.agents.evaluation_agent import evaluation_agent
-from intervuebot.core.redis import get_redis_client, store_interview_session, get_interview_session
+from ....services.file_upload_service import file_upload_service
+from ....services.resume_analyzer import resume_analyzer
+from ....agents.adaptive_interview_agent import adaptive_interview_agent
+from ....agents.evaluation_agent import evaluation_agent
+from ....core.redis import get_redis_client, store_interview_session, get_interview_session
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ router = APIRouter()
     tags=["Interviews"])
 async def start_interview(request: InterviewCreate) -> InterviewResponse:
     """
-    Start  a new adaptive interview session.
+    Start a new adaptive interview session.
     
     This endpoint creates a new interview session, analyzes the candidate's
     resume, and prepares for dynamic question generation based on the
@@ -76,59 +77,29 @@ async def start_interview(request: InterviewCreate) -> InterviewResponse:
         # Process uploaded files
         logger.info(f"Processing {len(request.candidate.files)} uploaded files")
         
-        # Convert files to the format expected by file upload service
-        files_for_processing = []
-        for file_data in request.candidate.files:
-            # Handle UploadedFileData format from frontend
-            if hasattr(file_data, 'name') and hasattr(file_data, 'type'):
-                # Frontend UploadedFileData format
-                files_for_processing.append({
-                    'name': file_data.name,
-                    'type': file_data.type,
-                    'size': getattr(file_data, 'size', 0),
-                    'content': getattr(file_data, 'content', ''),
-                })
-            elif isinstance(file_data, dict):
-                # Handle file data as dictionary
-                files_for_processing.append({
-                    'name': file_data.get('name', 'unknown'),
-                    'type': file_data.get('type', 'resume'),
-                    'size': file_data.get('size', 0),
-                    'content': file_data.get('content', ''),
+        # Get file content for resume analysis
+        resume_files_content = []
+        for file_ref in request.candidate.files:
+            file_content = await file_upload_service.get_file_content(file_ref.file_id)
+            if file_content:
+                resume_files_content.append({
+                    'name': file_ref.filename,
+                    'type': file_ref.file_type,
+                    'size': len(file_content),
+                    'content': file_content
                 })
             else:
-                # Handle ResumeFile objects
-                files_for_processing.append({
-                    'name': file_data.filename,
-                    'type': file_data.file_type,
-                    'size': 0,  # Will be calculated from content
-                    'content': '',  # Will be read from file
-                })
+                logger.warning(f"Could not retrieve content for file: {file_ref.file_id}")
         
-        # Process files through upload service
-        uploaded_files = await file_upload_service.upload_files(files_for_processing)
-        
-        if not uploaded_files:
+        if not resume_files_content:
             raise HTTPException(
                 status_code=400,
-                detail="No files were successfully processed"
+                detail="No file content could be retrieved for analysis"
             )
         
         # Analyze resume content
         logger.info("Analyzing resume content")
-        resume_text = ""
-        
-        # Extract text from uploaded files
-        for file_info in uploaded_files:
-            file_content = await file_upload_service.get_file_content(file_info.file_url)
-            if file_content:
-                # For now, we'll use a simple text extraction
-                # In a real implementation, you'd use proper text extraction libraries
-                resume_text += f"\n--- {file_info.filename} ---\n"
-                resume_text += file_content.decode('utf-8', errors='ignore')
-        
-        # Analyze resume using AI
-        resume_analysis = await resume_analyzer.analyze_resume(request.candidate.files, request.candidate.position)
+        resume_analysis = await resume_analyzer.analyze_resume(resume_files_content, request.candidate.position)
         
         # Create session ID
         import uuid
@@ -141,8 +112,8 @@ async def start_interview(request: InterviewCreate) -> InterviewResponse:
             position=request.candidate.position,
             experience_level=request.candidate.experience_level,
             interview_type=request.candidate.interview_type,
-            files=request.candidate.files,  # Use original UploadedFileData
-            resume_analysis=resume_analysis,  # Include the resume analysis
+            files=request.candidate.files,  # Use file references
+            resume_analysis=resume_analysis,
         )
         
         # Store session data in Redis
@@ -494,19 +465,19 @@ async def finalize_interview(session_id: str) -> FinalizeResult:
         
         # Update session status
         await store_interview_session(session_id, {"status": "completed"})
-        await store_interview_session(session_id, {"final_report": report.dict()})
+        await store_interview_session(session_id, {"final_report": report})
         
         return FinalizeResult(
             status="completed",
             message="Interview finalized successfully",
             session_id=session_id,
             report_summary={
-                "overall_score": report.overall_score,
-                "hiring_recommendation": report.hiring_recommendation,
-                "confidence_level": report.confidence_level,
-                "total_questions": report.total_questions,
-                "total_responses": report.total_responses,
-                "average_response_time": report.average_response_time
+                "overall_score": report.get("overall_score", 0.0),
+                "hiring_recommendation": report.get("hiring_recommendation", "unknown"),
+                "confidence_level": report.get("confidence_level", 0.0),
+                "total_questions": report.get("total_questions", 0),
+                "total_responses": report.get("total_responses", 0),
+                "average_response_time": report.get("average_response_time", 0.0)
             }
         )
         

@@ -20,9 +20,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
-from intervuebot.api.v1.router import api_router
-from intervuebot.core.config import settings
-from intervuebot.core.events import create_start_app_handler, create_stop_app_handler
+from .intervuebot.api.v1.router import api_router
+from .intervuebot.core.config import settings
+from .intervuebot.core.events import create_start_app_handler, create_stop_app_handler
 
 
 def create_application() -> FastAPI:

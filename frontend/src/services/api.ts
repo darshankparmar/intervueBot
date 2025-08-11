@@ -12,17 +12,25 @@ export const apiClient = axios.create({
 });
 
 // Types for API requests and responses
-export interface ResumeFile {
+export interface FileReference {
+  file_id: string;
   filename: string;
-  file_url: string;
   file_type: 'resume' | 'cv' | 'cover_letter';
 }
 
-export interface UploadedFileData {
-  name: string;
-  type: 'resume' | 'cv' | 'cover_letter';
+export interface FileInfo {
+  file_id: string;
+  filename: string;
+  file_type: 'resume' | 'cv' | 'cover_letter';
   size: number;
-  content: string;
+  uploaded_at: string;
+}
+
+export interface FileUploadResponse {
+  status: string;
+  message: string;
+  files: FileInfo[];
+  errors: string[];
 }
 
 export interface CandidateProfile {
@@ -31,7 +39,7 @@ export interface CandidateProfile {
   position: string;
   experience_level: 'junior' | 'mid-level' | 'senior' | 'lead';
   interview_type: 'technical' | 'behavioral' | 'mixed' | 'leadership';
-  files: UploadedFileData[];
+  files: FileReference[];
 }
 
 export interface ResumeAnalysis {
@@ -241,6 +249,60 @@ export class InterviewService {
       // Something else happened
       return new Error(error.message || defaultMessage);
     }
+  }
+}
+
+export class FileService {
+  /**
+   * Upload files for interview preparation.
+   */
+  static async uploadFiles(files: File[]): Promise<FileUploadResponse> {
+    try {
+      const formData = new FormData();
+      files.forEach((file) => {
+        formData.append('files', file);
+      });
+
+      const response = await apiClient.post<FileUploadResponse>('/api/v1/files/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error, 'Failed to upload files');
+    }
+  }
+
+  /**
+   * Get file information by ID.
+   */
+  static async getFileInfo(fileId: string): Promise<FileInfo> {
+    try {
+      const response = await apiClient.get<FileInfo>(`/api/v1/files/${fileId}`);
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error, 'Failed to get file info');
+    }
+  }
+
+  /**
+   * Delete a file by ID.
+   */
+  static async deleteFile(fileId: string): Promise<void> {
+    try {
+      await apiClient.delete(`/api/v1/files/${fileId}`);
+    } catch (error) {
+      throw this.handleError(error, 'Failed to delete file');
+    }
+  }
+
+  private static handleError(error: any, defaultMessage: string): Error {
+    if (error.response?.data?.detail) {
+      return new Error(error.response.data.detail);
+    }
+    return new Error(defaultMessage);
   }
 }
 

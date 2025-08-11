@@ -58,8 +58,48 @@ const InterviewPage: React.FC = () => {
     if (timeLeft > 0) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
       return () => clearTimeout(timer);
+    } else if (timeLeft === 0 && currentQuestion && !submitting) {
+      // Time ran out - auto-submit empty response and end interview
+      handleTimeoutExpired();
     }
-  }, [timeLeft]);
+  }, [timeLeft, currentQuestion, submitting]);
+
+  const handleTimeoutExpired = async () => {
+    if (!sessionId || !currentQuestion) return;
+    
+    console.log('Time expired, auto-submitting empty response and ending interview');
+    setSubmitting(true);
+    setError(null);
+    
+    try {
+      // Submit empty response to indicate timeout
+      await InterviewService.submitResponse(sessionId, {
+        question_id: currentQuestion.id,
+        answer: "[No response - time expired]",
+        time_taken: currentQuestion.expected_duration,
+      });
+      
+      // Show timeout message
+      setError("Time expired! Your interview has been automatically ended due to no response.");
+      
+      // Auto-finalize interview after 5 seconds
+      setTimeout(async () => {
+        try {
+          await InterviewService.finalizeInterview(sessionId);
+          navigate(`/report/${sessionId}`);
+        } catch (err) {
+          console.error('Failed to auto-finalize interview:', err);
+          setError('Interview ended due to timeout. Please contact support for your results.');
+        }
+      }, 5000);
+      
+    } catch (err) {
+      console.error('Failed to submit timeout response:', err);
+      setError('Interview ended due to timeout. Please contact support for your results.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const loadNextQuestion = async () => {
     if (!sessionId) {
@@ -182,9 +222,22 @@ const InterviewPage: React.FC = () => {
             <Chip
               icon={<Timer />}
               label={formatTime(timeLeft)}
-              color={timeLeft < 30 ? 'error' : 'primary'}
+              color={timeLeft < 30 ? 'error' : timeLeft < 60 ? 'warning' : 'primary'}
               variant="outlined"
+              sx={{
+                animation: timeLeft < 30 ? 'pulse 1s infinite' : 'none',
+                '@keyframes pulse': {
+                  '0%': { opacity: 1 },
+                  '50%': { opacity: 0.5 },
+                  '100%': { opacity: 1 },
+                }
+              }}
             />
+            {timeLeft < 60 && (
+              <Alert severity="warning" sx={{ py: 0 }}>
+                Time running out!
+              </Alert>
+            )}
             <Button
               variant="outlined"
               color="secondary"
@@ -218,18 +271,54 @@ const InterviewPage: React.FC = () => {
                   exit={{ opacity: 0, x: -20 }}
                   transition={{ duration: 0.5 }}
                 >
-                  <Card sx={{ background: 'rgba(255, 255, 255, 0.9)', mb: 3 }}>
+                  <Card sx={{ mb: 3 }}>
                     <CardContent>
-                      <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
-                        {currentQuestion.text}
+                      <Typography variant="h6" gutterBottom>
+                        {currentQuestion?.text}
                       </Typography>
                       
-                      {currentQuestion.context && (
-                        <Paper sx={{ p: 2, mb: 3, backgroundColor: 'rgba(99, 102, 241, 0.05)' }}>
+                      {/* Time Progress Bar */}
+                      <Box sx={{ mt: 2 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                           <Typography variant="body2" color="text.secondary">
-                            <strong>Context:</strong> {currentQuestion.context.focus_area}
+                            Time Remaining
                           </Typography>
-                        </Paper>
+                          <Typography variant="body2" color="text.secondary">
+                            {formatTime(timeLeft)}
+                          </Typography>
+                        </Box>
+                        <LinearProgress
+                          variant="determinate"
+                          value={(timeLeft / (currentQuestion?.expected_duration || 300)) * 100}
+                          color={timeLeft < 30 ? 'error' : timeLeft < 60 ? 'warning' : 'primary'}
+                          sx={{ height: 8, borderRadius: 4 }}
+                        />
+                        
+                        {/* Time Warning Messages */}
+                        {timeLeft < 30 && (
+                          <Alert severity="error" sx={{ mt: 1, py: 0 }}>
+                            ⚠️ Time is almost up! Please submit your answer quickly.
+                          </Alert>
+                        )}
+                        {timeLeft < 60 && timeLeft >= 30 && (
+                          <Alert severity="warning" sx={{ mt: 1, py: 0 }}>
+                            ⏰ Less than 1 minute remaining!
+                          </Alert>
+                        )}
+                      </Box>
+                      
+                      {/* Question Context */}
+                      {currentQuestion?.context && (
+                        <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            <strong>Focus Area:</strong> {currentQuestion.context.focus_area}
+                          </Typography>
+                          {currentQuestion.context.reasoning && (
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                              <strong>Context:</strong> {currentQuestion.context.reasoning}
+                            </Typography>
+                          )}
+                        </Box>
                       )}
                       
                       <TextField

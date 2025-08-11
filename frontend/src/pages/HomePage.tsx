@@ -3,167 +3,163 @@ import {
   Container,
   Typography,
   Box,
+  Button,
+  TextField,
   Card,
   CardContent,
-  TextField,
-  Button,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Alert,
   CircularProgress,
+  Chip,
+  LinearProgress,
 } from '@mui/material';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import {
+  Upload,
+  FileText,
   User,
   Mail,
   Briefcase,
-  Award,
   Clock,
   CheckCircle,
   AlertCircle,
-  FileText,
-  Upload,
 } from 'lucide-react';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { useNavigate } from 'react-router-dom';
+import InterviewService, { FileService, FileInfo, FileReference } from '../services/api';
 
-import { InterviewService, InterviewCreate, CandidateProfile } from '../services/api';
+// Form validation schema
+const schema = yup.object().shape({
+  name: yup.string().required('Name is required'),
+  email: yup.string().email('Valid email is required').required('Email is required'),
+  position: yup.string().required('Position is required'),
+  experience_level: yup.string().oneOf(['junior', 'mid-level', 'senior', 'lead']).required('Experience level is required'),
+  interview_type: yup.string().oneOf(['technical', 'behavioral', 'mixed', 'leadership']).required('Interview type is required'),
+  duration_minutes: yup.number().min(15, 'Minimum 15 minutes').max(120, 'Maximum 120 minutes').required('Duration is required'),
+});
 
-import FileUpload from '../components/FileUpload';
-
-// Form data type without files (files are handled separately)
 interface InterviewFormData {
-  candidate: {
-    name: string;
-    email: string;
-    position: string;
-    experience_level: 'junior' | 'mid-level' | 'senior' | 'lead';
-    interview_type: 'technical' | 'behavioral' | 'mixed' | 'leadership';
-  };
+  name: string;
+  email: string;
+  position: string;
+  experience_level: 'junior' | 'mid-level' | 'senior' | 'lead';
+  interview_type: 'technical' | 'behavioral' | 'mixed' | 'leadership';
   duration_minutes: number;
 }
-
-interface UploadedFile {
-  id: string;
-  name: string;
-  size: number;
-  type: string;
-  fileType: 'resume' | 'cv' | 'cover_letter';
-  content: string;
-  status: 'uploading' | 'success' | 'error';
-  error?: string;
-}
-
-// Validation schema
-const schema = yup.object().shape({
-  candidate: yup.object().shape({
-    name: yup.string().required('Name is required'),
-    email: yup.string().email('Invalid email').required('Email is required'),
-    position: yup.string().required('Position is required'),
-    experience_level: yup.string().oneOf(['junior', 'mid-level', 'senior', 'lead']).required('Experience level is required'),
-    interview_type: yup.string().oneOf(['technical', 'behavioral', 'mixed', 'leadership']).required('Interview type is required'),
-    // Remove files validation from schema since we handle it manually in onSubmit
-  }),
-  duration_minutes: yup.number().min(30).max(120).required('Duration is required'),
-});
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadedFiles, setUploadedFiles] = useState<FileInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const {
     control,
     handleSubmit,
     formState: { errors },
-    watch,
+    reset,
   } = useForm<InterviewFormData>({
     resolver: yupResolver(schema),
     defaultValues: {
-      candidate: {
-        name: '',
-        email: '',
-        position: '',
-        experience_level: 'mid-level',
-        interview_type: 'technical',
-      },
+      experience_level: 'mid-level',
+      interview_type: 'technical',
       duration_minutes: 60,
     },
   });
 
-  const onSubmit = async (data: InterviewFormData) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    setUploadProgress(0);
+    setError(null);
+    setSuccess(null);
+
     try {
-      setLoading(true);
-      setError(null);
+      // Simulate upload progress
+      const progressInterval = setInterval(() => {
+        setUploadProgress((prev) => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 200);
 
-      // Convert uploaded files to the format expected by the API
-      const filesForAPI = uploadedFiles
-        .filter(file => file.status === 'success')
-        .map(file => ({
-          name: file.name,
-          type: file.fileType,
-          size: file.size,
-          content: file.content,
-        }));
+      // Upload files
+      const uploadResponse = await FileService.uploadFiles(Array.from(files));
+      
+      clearInterval(progressInterval);
+      setUploadProgress(100);
 
-      if (filesForAPI.length === 0) {
-        setError('Please upload at least one valid file');
-        return;
+      if (uploadResponse.status === 'success' || uploadResponse.status === 'partial_success') {
+        setUploadedFiles(uploadResponse.files);
+        setSuccess(uploadResponse.message);
+        
+        if (uploadResponse.errors.length > 0) {
+          setError(`Some files had issues: ${uploadResponse.errors.join(', ')}`);
+        }
+      } else {
+        setError('File upload failed');
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'File upload failed');
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+    }
+  };
 
-      // Update the form data with uploaded files
-      const interviewData: InterviewCreate = {
-        ...data,
+  const removeFile = (fileId: string) => {
+    setUploadedFiles(prev => prev.filter(file => file.file_id !== fileId));
+  };
+
+  const onSubmit = async (data: InterviewFormData) => {
+    if (uploadedFiles.length === 0) {
+      setError('Please upload at least one file before starting the interview');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      // Convert uploaded files to file references
+      const fileReferences: FileReference[] = uploadedFiles.map(file => ({
+        file_id: file.file_id,
+        filename: file.filename,
+        file_type: file.file_type as 'resume' | 'cv' | 'cover_letter'
+      }));
+
+      // Start interview with file references
+      const response = await InterviewService.startInterview({
         candidate: {
-          ...data.candidate,
-          files: filesForAPI,
+          ...data,
+          files: fileReferences,
         },
-      };
+        duration_minutes: data.duration_minutes,
+      });
 
-      // Start the interview
-      const response = await InterviewService.startInterview(interviewData);
+      setSuccess('Interview started successfully!');
       
-      // Navigate to interview page with session ID
-      navigate(`/interview/${response.session_id}`);
-      
-    } catch (err: any) {
-      setError(err.message || 'Failed to start interview');
+      // Navigate to interview page after a short delay
+      setTimeout(() => {
+        navigate(`/interview/${response.session_id}`);
+      }, 1500);
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start interview');
     } finally {
       setLoading(false);
     }
   };
-
-  const handleFilesChange = (files: UploadedFile[]) => {
-    setUploadedFiles(files);
-  };
-
-  const features = [
-    {
-      icon: <User size={24} color="#6366f1" />,
-      title: 'AI-Powered Interviews',
-      description: 'Advanced AI agents conduct intelligent, adaptive interviews based on candidate responses and resume analysis.',
-    },
-    {
-      icon: <CheckCircle size={24} color="#10b981" />,
-      title: 'Real-time Evaluation',
-      description: 'Get instant feedback and scoring on technical skills, communication, and problem-solving abilities.',
-    },
-    {
-      icon: <FileText size={24} color="#f59e0b" />,
-      title: 'Resume Analysis',
-      description: 'Automated parsing and analysis of resumes, CVs, and cover letters to extract relevant information.',
-    },
-    {
-      icon: <Award size={24} color="#8b5cf6" />,
-      title: 'Comprehensive Reports',
-      description: 'Detailed interview reports with hiring recommendations, skill gaps, and improvement suggestions.',
-    },
-  ];
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -174,259 +170,252 @@ const HomePage: React.FC = () => {
       >
         {/* Header */}
         <Box textAlign="center" sx={{ mb: 6 }}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-          >
-            <Typography
-              variant="h2"
-              sx={{
-                fontWeight: 700,
-                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                backgroundClip: 'text',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                mb: 2,
-              }}
-            >
-              IntervueBot
-            </Typography>
-            <Typography variant="h5" color="text.secondary" sx={{ mb: 4 }}>
-              AI-Powered Interview Platform
-            </Typography>
-          </motion.div>
+          <Typography variant="h2" gutterBottom sx={{ fontWeight: 700, color: 'primary.main' }}>
+            IntervueBot 🤖
+          </Typography>
+          <Typography variant="h5" color="text.secondary" sx={{ mb: 2 }}>
+            AI-Powered Interview Experience
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 600, mx: 'auto' }}>
+            Upload your resume and start your AI interview. Our intelligent system will adapt questions based on your background and provide comprehensive feedback.
+          </Typography>
         </Box>
 
-        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 4 }}>
-          {/* Features Section */}
-          <Box sx={{ flex: { xs: '1', md: '0 0 33.333%' } }}>
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-            >
-              <Card sx={{ background: 'rgba(255, 255, 255, 0.9)', height: '100%' }}>
-                <CardContent>
-                  <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
-                    Key Features
+        {/* File Upload Section */}
+        <Card sx={{ mb: 4, background: 'rgba(255, 255, 255, 0.9)' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Upload size={20} />
+              Upload Documents
+            </Typography>
+            
+            <Box sx={{ mb: 3 }}>
+              <input
+                accept=".pdf,.doc,.docx,.txt,.rtf"
+                style={{ display: 'none' }}
+                id="file-upload"
+                multiple
+                type="file"
+                onChange={handleFileUpload}
+                disabled={uploading}
+              />
+              <label htmlFor="file-upload">
+                <Button
+                  variant="outlined"
+                  component="span"
+                  startIcon={<Upload />}
+                  disabled={uploading}
+                  sx={{ mb: 2 }}
+                >
+                  Choose Files
+                </Button>
+              </label>
+              
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Supported formats: PDF, DOC, DOCX, TXT, RTF (Max 10MB per file)
+              </Typography>
+
+              {uploading && (
+                <Box sx={{ width: '100%', mb: 2 }}>
+                  <LinearProgress variant="determinate" value={uploadProgress} />
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    Uploading... {uploadProgress}%
                   </Typography>
-                  
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {features.map((feature, index) => (
-                      <motion.div
-                        key={index}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.4, delay: 0.3 + index * 0.1 }}
-                      >
-                        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-                          <Box sx={{ color: 'primary.main', mt: 0.5 }}>
-                            {feature.icon}
-                          </Box>
-                          <Box>
-                            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-                              {feature.title}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {feature.description}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </motion.div>
+                </Box>
+              )}
+
+              {uploadedFiles.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Uploaded Files:
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {uploadedFiles.map((file) => (
+                      <Chip
+                        key={file.file_id}
+                        icon={<FileText size={16} />}
+                        label={file.filename}
+                        onDelete={() => removeFile(file.file_id)}
+                        color="primary"
+                        variant="outlined"
+                      />
                     ))}
                   </Box>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </Box>
+                </Box>
+              )}
+            </Box>
+          </CardContent>
+        </Card>
 
-          {/* Interview Form */}
-          <Box sx={{ flex: { xs: '1', md: '0 0 66.666%' } }}>
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-            >
-              <Card sx={{ background: 'rgba(255, 255, 255, 0.9)' }}>
-                <CardContent>
-                  <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 4 }}>
-                    Start Your Interview
-                  </Typography>
+        {/* Interview Form */}
+        <Card sx={{ background: 'rgba(255, 255, 255, 0.9)' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <User size={20} />
+              Interview Details
+            </Typography>
 
-                  {error && (
-                    <Alert severity="error" sx={{ mb: 3 }}>
-                      {error}
-                    </Alert>
-                  )}
+            <form onSubmit={handleSubmit(onSubmit)}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 3 }}>
+                {/* Name */}
+                <Box>
+                  <Controller
+                    name="name"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        label="Full Name"
+                        error={!!errors.name}
+                        helperText={errors.name?.message}
+                        InputProps={{
+                          startAdornment: <User size={20} style={{ marginRight: 8, color: 'gray' }} />,
+                        }}
+                      />
+                    )}
+                  />
+                </Box>
 
-                  <form onSubmit={handleSubmit(onSubmit)}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      {/* Basic Information */}
-                      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 3 }}>
-                        <Box sx={{ flex: 1 }}>
-                          <Controller
-                            name="candidate.name"
-                            control={control}
-                            render={({ field }) => (
-                              <TextField
-                                {...field}
-                                label="Full Name"
-                                fullWidth
-                                error={!!errors.candidate?.name}
-                                helperText={errors.candidate?.name?.message}
-                                sx={{ mb: 2 }}
-                              />
-                            )}
-                          />
-                        </Box>
+                {/* Email */}
+                <Box>
+                  <Controller
+                    name="email"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        label="Email Address"
+                        type="email"
+                        error={!!errors.email}
+                        helperText={errors.email?.message}
+                        InputProps={{
+                          startAdornment: <Mail size={20} style={{ marginRight: 8, color: 'gray' }} />,
+                        }}
+                      />
+                    )}
+                  />
+                </Box>
 
-                        <Box sx={{ flex: 1 }}>
-                          <Controller
-                            name="candidate.email"
-                            control={control}
-                            render={({ field }) => (
-                              <TextField
-                                {...field}
-                                label="Email Address"
-                                type="email"
-                                fullWidth
-                                error={!!errors.candidate?.email}
-                                helperText={errors.candidate?.email?.message}
-                                sx={{ mb: 2 }}
-                              />
-                            )}
-                          />
-                        </Box>
-                      </Box>
+                {/* Position */}
+                <Box>
+                  <Controller
+                    name="position"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        label="Position Applied For"
+                        error={!!errors.position}
+                        helperText={errors.position?.message}
+                        InputProps={{
+                          startAdornment: <Briefcase size={20} style={{ marginRight: 8, color: 'gray' }} />,
+                        }}
+                      />
+                    )}
+                  />
+                </Box>
 
-                      <Box>
-                        <Controller
-                          name="candidate.position"
-                          control={control}
-                          render={({ field }) => (
-                            <TextField
-                              {...field}
-                              label="Position Applied For"
-                              fullWidth
-                              error={!!errors.candidate?.position}
-                              helperText={errors.candidate?.position?.message}
-                              sx={{ mb: 2 }}
-                            />
-                          )}
-                        />
-                      </Box>
+                {/* Experience Level */}
+                <Box>
+                  <Controller
+                    name="experience_level"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        select
+                        label="Experience Level"
+                        error={!!errors.experience_level}
+                        helperText={errors.experience_level?.message}
+                      >
+                        <option value="junior">Junior (0-2 years)</option>
+                        <option value="mid-level">Mid-Level (2-5 years)</option>
+                        <option value="senior">Senior (5-8 years)</option>
+                        <option value="lead">Lead (8+ years)</option>
+                      </TextField>
+                    )}
+                  />
+                </Box>
 
-                      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 3 }}>
-                        <Box sx={{ flex: 1 }}>
-                          <Controller
-                            name="candidate.experience_level"
-                            control={control}
-                            render={({ field }) => (
-                              <FormControl fullWidth error={!!errors.candidate?.experience_level}>
-                                <InputLabel>Experience Level</InputLabel>
-                                <Select {...field} label="Experience Level">
-                                  <MenuItem value="junior">Junior (0-2 years)</MenuItem>
-                                  <MenuItem value="mid-level">Mid-Level (3-5 years)</MenuItem>
-                                  <MenuItem value="senior">Senior (6-8 years)</MenuItem>
-                                  <MenuItem value="lead">Lead (9+ years)</MenuItem>
-                                </Select>
-                                {errors.candidate?.experience_level && (
-                                  <Typography variant="caption" color="error">
-                                    {errors.candidate.experience_level.message}
-                                  </Typography>
-                                )}
-                              </FormControl>
-                            )}
-                          />
-                        </Box>
+                {/* Interview Type */}
+                <Box>
+                  <Controller
+                    name="interview_type"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        select
+                        label="Interview Type"
+                        error={!!errors.interview_type}
+                        helperText={errors.interview_type?.message}
+                      >
+                        <option value="technical">Technical</option>
+                        <option value="behavioral">Behavioral</option>
+                        <option value="mixed">Mixed</option>
+                        <option value="leadership">Leadership</option>
+                      </TextField>
+                    )}
+                  />
+                </Box>
 
-                        <Box sx={{ flex: 1 }}>
-                          <Controller
-                            name="candidate.interview_type"
-                            control={control}
-                            render={({ field }) => (
-                              <FormControl fullWidth error={!!errors.candidate?.interview_type}>
-                                <InputLabel>Interview Type</InputLabel>
-                                <Select {...field} label="Interview Type">
-                                  <MenuItem value="technical">Technical</MenuItem>
-                                  <MenuItem value="behavioral">Behavioral</MenuItem>
-                                  <MenuItem value="mixed">Mixed</MenuItem>
-                                  <MenuItem value="leadership">Leadership</MenuItem>
-                                </Select>
-                                {errors.candidate?.interview_type && (
-                                  <Typography variant="caption" color="error">
-                                    {errors.candidate.interview_type.message}
-                                  </Typography>
-                                )}
-                              </FormControl>
-                            )}
-                          />
-                        </Box>
-                      </Box>
+                {/* Duration */}
+                <Box>
+                  <Controller
+                    name="duration_minutes"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        label="Duration (minutes)"
+                        type="number"
+                        error={!!errors.duration_minutes}
+                        helperText={errors.duration_minutes?.message}
+                        InputProps={{
+                          startAdornment: <Clock size={20} style={{ marginRight: 8, color: 'gray' }} />,
+                        }}
+                      />
+                    )}
+                  />
+                </Box>
 
-                      <Box>
-                        <Controller
-                          name="duration_minutes"
-                          control={control}
-                          render={({ field }) => (
-                            <TextField
-                              {...field}
-                              label="Interview Duration (minutes)"
-                              type="number"
-                              fullWidth
-                              error={!!errors.duration_minutes}
-                              helperText={errors.duration_minutes?.message}
-                              sx={{ mb: 2 }}
-                            />
-                          )}
-                        />
-                      </Box>
+                {/* Submit Button */}
+                <Box sx={{ gridColumn: { xs: '1', sm: '1 / -1' } }}>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    disabled={loading || uploading || uploadedFiles.length === 0}
+                    startIcon={loading ? <CircularProgress size={20} /> : <CheckCircle size={20} />}
+                    sx={{ py: 1.5 }}
+                  >
+                    {loading ? 'Starting Interview...' : 'Start Interview'}
+                  </Button>
+                </Box>
+              </Box>
+            </form>
+          </CardContent>
+        </Card>
 
-                      {/* File Upload Section */}
-                      <Box>
-                        <FileUpload
-                          onFilesChange={handleFilesChange}
-                          maxFiles={10}
-                          maxSize={10 * 1024 * 1024} // 10MB
-                        />
-                      </Box>
+        {/* Alerts */}
+        {error && (
+          <Alert severity="error" sx={{ mt: 3 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
 
-                      {/* Submit Button */}
-                      <Box>
-                        <Button
-                          type="submit"
-                          variant="contained"
-                          size="large"
-                          fullWidth
-                          disabled={loading}
-                          sx={{
-                            py: 2,
-                            fontSize: '1.1rem',
-                            fontWeight: 600,
-                            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                            '&:hover': {
-                              background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-                            },
-                          }}
-                        >
-                          {loading ? (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <CircularProgress size={20} color="inherit" />
-                              Starting Interview...
-                            </Box>
-                          ) : (
-                            'Start Interview'
-                          )}
-                        </Button>
-                      </Box>
-                    </Box>
-                  </form>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </Box>
-        </Box>
+        {success && (
+          <Alert severity="success" sx={{ mt: 3 }} onClose={() => setSuccess(null)}>
+            {success}
+          </Alert>
+        )}
       </motion.div>
     </Container>
   );

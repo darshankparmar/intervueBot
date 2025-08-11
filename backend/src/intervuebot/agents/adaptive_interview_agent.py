@@ -86,52 +86,93 @@ class AdaptiveInterviewAgent:
             
             # Generate question using AI
             question_prompt = self._create_question_prompt(context)
+            logger.info(f"Generated prompt for question {question_count + 1}: {question_prompt[:200]}...")
+            
             question_response = self.agent.run(question_prompt)
             
-            logger.info(f"AI response: {question_response.content}")
+            logger.info(f"AI response for question {question_count + 1}: {question_response.content[:200]}...")
             
             # Parse question from AI response
             question_data = self._parse_question_response(question_response.content)
             
-            logger.info(f"Parsed question data: {question_data}")
+            logger.info(f"Parsed question data for question {question_count + 1}: {question_data}")
             
             # If parsing failed, generate a dynamic fallback question
             if not question_data:
-                logger.warning("Question parsing failed, generating fallback question")
+                logger.warning(f"Question parsing failed for question {question_count + 1}, generating fallback question")
                 position = context.get('position', 'Software Engineer')
                 difficulty = context.get('next_difficulty', 'medium')
                 skills = context.get('resume_skills', [])
                 question_count = context.get('question_count', 0)
+                interview_type = context.get('interview_type', 'technical')
                 
-                # Generate different questions based on context
+                logger.info(f"Generating fallback question {question_count + 1} for {position} ({interview_type}) with skills: {skills[:3]}")
+                # Generate different questions based on context and question count
                 if question_count == 0:
-                    fallback_question = f"Can you walk me through your experience with {position} development and the technologies you've used?"
+                    # First question - focus on introduction and background
+                    if interview_type == 'technical':
+                        fallback_question = f"Can you walk me through your technical background and experience with {position} development?"
+                    elif interview_type == 'behavioral':
+                        fallback_question = f"Tell me about your professional journey and what interests you about {position} roles?"
+                    else:
+                        fallback_question = f"Can you introduce yourself and explain your interest in {position} positions?"
+                        
                 elif question_count == 1:
+                    # Second question - focus on specific skills or projects
                     if skills:
                         skill = skills[0] if skills else "programming"
-                        fallback_question = f"Describe a challenging project where you used {skill}. What were the key technical decisions you made?"
+                        if interview_type == 'technical':
+                            fallback_question = f"Describe a challenging technical project where you used {skill}. What were the key decisions and outcomes?"
+                        else:
+                            fallback_question = f"Tell me about a time when you had to solve a complex problem using {skill}. How did you approach it?"
                     else:
-                        fallback_question = f"What's the most complex {position} problem you've solved? Walk me through your approach."
+                        if interview_type == 'technical':
+                            fallback_question = f"What's the most complex {position} problem you've solved? Walk me through your approach and the solution."
+                        else:
+                            fallback_question = f"Can you share an example of a difficult challenge you faced in your previous role? How did you handle it?"
+                            
                 elif question_count == 2:
-                    fallback_question = f"How do you approach debugging and troubleshooting in {position} development? Can you give me a specific example?"
+                    # Third question - focus on problem-solving and methodology
+                    if interview_type == 'technical':
+                        fallback_question = f"How do you approach debugging and troubleshooting in {position} development? Can you give me a specific example?"
+                    else:
+                        fallback_question = f"Tell me about a time when you had to work with a difficult team member or stakeholder. How did you handle the situation?"
+                        
                 elif question_count == 3:
-                    fallback_question = f"What's your experience with system design and architecture? How would you design a scalable {position} solution?"
+                    # Fourth question - focus on architecture and design
+                    if interview_type == 'technical':
+                        fallback_question = f"What's your experience with system design and architecture? How would you design a scalable {position} solution?"
+                    else:
+                        fallback_question = f"Describe a situation where you had to lead a team or project. What was your approach and what did you learn?"
+                        
+                elif question_count == 4:
+                    # Fifth question - focus on learning and growth
+                    if interview_type == 'technical':
+                        fallback_question = f"Tell me about a time when you had to learn a new technology quickly for a {position} project. How did you approach it?"
+                    else:
+                        fallback_question = f"Can you share an example of how you've grown professionally in the past year? What skills have you developed?"
+                        
                 else:
-                    fallback_question = f"Tell me about a time when you had to learn a new technology quickly for a {position} project. How did you approach it?"
+                    # Additional questions - focus on advanced topics
+                    if interview_type == 'technical':
+                        fallback_question = f"What emerging technologies or trends in {position} development are you most excited about? Why?"
+                    else:
+                        fallback_question = f"Tell me about a time when you had to make a difficult decision with limited information. How did you proceed?"
                 
                 question_data = {
                     "question": fallback_question,
-                    "category": "technical",
+                    "category": "technical" if interview_type == 'technical' else "behavioral",
                     "difficulty": difficulty,
                     "expected_duration": 300,
                     "context": {
-                        "focus_area": "experience",
-                        "reasoning": f"fallback question {question_count + 1} based on position and context"
+                        "focus_area": "dynamic_question_generation",
+                        "reasoning": f"fallback question {question_count + 1} based on position, interview type, and context"
                     },
                     "follow_up_hints": [
-                        "What were the technical challenges?",
+                        "Can you provide more specific details?",
+                        "What were the key challenges you faced?",
                         "How did you handle unexpected issues?",
-                        "What would you do differently?"
+                        "What would you do differently next time?"
                     ]
                 }
             
@@ -188,7 +229,13 @@ class AdaptiveInterviewAgent:
         # Calculate average response score
         avg_score = 0.0
         if previous_responses:
-            scores = [r.evaluation_score for r in previous_responses if r.evaluation_score]
+            scores = []
+            for response in previous_responses:
+                if hasattr(response, 'evaluation_score') and response.evaluation_score:
+                    scores.append(response.evaluation_score)
+                elif isinstance(response, dict) and 'evaluation_score' in response:
+                    scores.append(response['evaluation_score'])
+            
             avg_score = sum(scores) / len(scores) if scores else 0.0
         
         # Determine next difficulty based on performance
@@ -196,21 +243,40 @@ class AdaptiveInterviewAgent:
             current_difficulty, avg_score, interview_progress
         )
         
-        # Extract relevant skills from resume
-        relevant_skills = resume_analysis.extracted_skills if resume_analysis else []
+        # Extract relevant skills from resume - handle both Pydantic and dict
+        relevant_skills = []
+        if resume_analysis:
+            if hasattr(resume_analysis, 'extracted_skills'):
+                relevant_skills = resume_analysis.extracted_skills or []
+            elif isinstance(resume_analysis, dict) and 'extracted_skills' in resume_analysis:
+                relevant_skills = resume_analysis['extracted_skills'] or []
         
         # Get recent response themes
         recent_themes = self._extract_recent_themes(previous_responses)
         
+        # Handle candidate profile - support both Pydantic and dict
+        experience_level = "mid-level"
+        interview_type = "technical"
+        
+        if hasattr(candidate_profile, 'experience_level'):
+            experience_level = candidate_profile.experience_level.value
+        elif isinstance(candidate_profile, dict) and 'experience_level' in candidate_profile:
+            experience_level = candidate_profile['experience_level']
+            
+        if hasattr(candidate_profile, 'interview_type'):
+            interview_type = candidate_profile.interview_type.value
+        elif isinstance(candidate_profile, dict) and 'interview_type' in candidate_profile:
+            interview_type = candidate_profile['interview_type']
+        
         return {
-            "candidate_name": candidate_profile.name,
+            "candidate_name": getattr(candidate_profile, 'name', candidate_profile.get('name', 'Unknown')),
             "position": position,
-            "experience_level": candidate_profile.experience_level.value,
-            "interview_type": candidate_profile.interview_type.value,
+            "experience_level": experience_level,
+            "interview_type": interview_type,
             "resume_skills": relevant_skills,
-            "resume_experience": resume_analysis.experience_years if resume_analysis else 0.0,
-            "current_difficulty": current_difficulty.value,
-            "next_difficulty": next_difficulty.value,
+            "resume_experience": getattr(resume_analysis, 'experience_years', resume_analysis.get('experience_years', 0.0)) if resume_analysis else 0.0,
+            "current_difficulty": current_difficulty.value if hasattr(current_difficulty, 'value') else str(current_difficulty),
+            "next_difficulty": next_difficulty.value if hasattr(next_difficulty, 'value') else str(next_difficulty),
             "interview_progress": interview_progress,
             "question_count": question_count,
             "average_score": avg_score,
@@ -411,70 +477,89 @@ class AdaptiveInterviewAgent:
         position: str
     ) -> ResponseEvaluation:
         """
-        Evaluate a candidate response comprehensively.
+        Evaluate a candidate's response to an interview question.
         
         Args:
-            question: The question that was asked
+            question: The interview question
             response: Candidate's response
-            candidate_profile: Candidate profile
-            resume_analysis: Resume analysis
+            candidate_profile: Candidate profile information
+            resume_analysis: Resume analysis results
             position: Job position
             
         Returns:
             ResponseEvaluation: Comprehensive response evaluation
         """
         try:
+            logger.info(f"Evaluating response for question: {question.id}")
+            
             # Create evaluation context
             context = {
-                "question": question.text,
-                "question_category": question.category,
-                "question_difficulty": question.difficulty.value,
+                "question": question.text if hasattr(question, 'text') else str(question),
                 "response": response,
                 "position": position,
-                "experience_level": candidate_profile.experience_level.value,
-                "resume_skills": resume_analysis.extracted_skills if resume_analysis else [],
-                "resume_experience": resume_analysis.experience_years if resume_analysis else 0.0
+                "candidate_name": getattr(candidate_profile, 'name', candidate_profile.get('name', 'Unknown')),
+                "experience_level": getattr(candidate_profile, 'experience_level', candidate_profile.get('experience_level', 'mid-level')),
+                "resume_skills": getattr(resume_analysis, 'extracted_skills', resume_analysis.get('extracted_skills', [])) if resume_analysis else [],
+                "question_category": question.category if hasattr(question, 'category') else 'technical',
+                "question_difficulty": question.difficulty if hasattr(question, 'difficulty') else 'medium'
             }
             
             # Generate evaluation using AI
             evaluation_prompt = self._create_evaluation_prompt(context)
             evaluation_response = self.agent.run(evaluation_prompt)
             
+            logger.info(f"AI evaluation response: {evaluation_response.content[:200]}...")
+            
             # Parse evaluation from AI response
             evaluation_data = self._parse_evaluation_response(evaluation_response.content)
             
-            # Create ResponseEvaluation object
-            evaluation = ResponseEvaluation(
-                question_id=question.id,
-                response_text=response,
-                technical_accuracy=evaluation_data.get("technical_accuracy", 7.0),
-                communication_clarity=evaluation_data.get("communication_clarity", 7.0),
-                problem_solving_approach=evaluation_data.get("problem_solving_approach", 7.0),
-                experience_relevance=evaluation_data.get("experience_relevance", 7.0),
-                overall_score=evaluation_data.get("overall_score", 7.0),
-                strengths=evaluation_data.get("strengths", []),
-                areas_for_improvement=evaluation_data.get("areas_for_improvement", []),
-                suggestions=evaluation_data.get("suggestions", []),
-                suggested_difficulty=DifficultyLevel(evaluation_data.get("suggested_difficulty", "medium")),
-                follow_up_questions=evaluation_data.get("follow_up_questions", []),
-                skill_gaps=evaluation_data.get("skill_gaps", [])
-            )
-            
-            logger.info(f"Evaluated response with score: {evaluation.overall_score}")
-            return evaluation
-            
+            if evaluation_data:
+                # Create ResponseEvaluation object
+                return ResponseEvaluation(
+                    overall_score=evaluation_data.get("overall_score", 7.0),
+                    technical_accuracy=evaluation_data.get("technical_accuracy", 7.0),
+                    communication_clarity=evaluation_data.get("communication_clarity", 7.0),
+                    problem_solving_approach=evaluation_data.get("problem_solving_approach", 7.0),
+                    experience_relevance=evaluation_data.get("experience_relevance", 7.0),
+                    strengths=evaluation_data.get("strengths", []),
+                    areas_for_improvement=evaluation_data.get("areas_for_improvement", []),
+                    suggestions=evaluation_data.get("suggestions", []),
+                    suggested_difficulty=DifficultyLevel(evaluation_data.get("suggested_difficulty", "medium")),
+                    follow_up_questions=evaluation_data.get("follow_up_questions", []),
+                    skill_gaps=evaluation_data.get("skill_gaps", [])
+                )
+            else:
+                # Return default evaluation if parsing fails
+                logger.warning("Evaluation parsing failed, returning default evaluation")
+                return ResponseEvaluation(
+                    overall_score=7.0,
+                    technical_accuracy=7.0,
+                    communication_clarity=7.0,
+                    problem_solving_approach=7.0,
+                    experience_relevance=7.0,
+                    strengths=["Response provided"],
+                    areas_for_improvement=["Could provide more specific examples"],
+                    suggestions=["Consider adding concrete examples"],
+                    suggested_difficulty=DifficultyLevel.MEDIUM,
+                    follow_up_questions=["Can you elaborate on that?"],
+                    skill_gaps=[]
+                )
+                
         except Exception as e:
             logger.error(f"Failed to evaluate response: {e}")
-            # Return basic evaluation
+            # Return default evaluation on error
             return ResponseEvaluation(
-                question_id=question.id,
-                response_text=response,
-                technical_accuracy=7.0,
-                communication_clarity=7.0,
-                problem_solving_approach=7.0,
-                experience_relevance=7.0,
-                overall_score=7.0,
-                suggested_difficulty=DifficultyLevel.MEDIUM
+                overall_score=5.0,
+                technical_accuracy=5.0,
+                communication_clarity=5.0,
+                problem_solving_approach=5.0,
+                experience_relevance=5.0,
+                strengths=["Response submitted"],
+                areas_for_improvement=["Evaluation failed"],
+                suggestions=["Please try to provide more detailed answers"],
+                suggested_difficulty=DifficultyLevel.MEDIUM,
+                follow_up_questions=["Can you explain further?"],
+                skill_gaps=[]
             )
     
     def _create_evaluation_prompt(self, context: Dict[str, Any]) -> str:

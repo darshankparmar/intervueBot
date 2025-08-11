@@ -45,12 +45,12 @@ class ResumeAnalyzer:
             markdown=True,
         )
     
-    async def analyze_resume(self, resume_files: List[UploadedFileData], position: str) -> ResumeAnalysis:
+    async def analyze_resume(self, resume_files: List[Dict[str, Any]], position: str) -> ResumeAnalysis:
         """
         Analyze resume files to extract relevant information.
         
         Args:
-            resume_files: List of uploaded resume files
+            resume_files: List of resume file content dictionaries
             position: Job position being applied for
             
         Returns:
@@ -59,7 +59,7 @@ class ResumeAnalyzer:
         try:
             logger.info(f"Starting resume analysis for {len(resume_files)} files")
             
-            # Extract text from resume files (simplified - in real implementation, parse PDF/DOC)
+            # Extract text from resume files
             resume_text = await self._extract_text_from_files(resume_files)
             
             # Analyze resume content using AI
@@ -69,12 +69,12 @@ class ResumeAnalyzer:
             # Parse AI response into structured data
             analysis_data = self._parse_analysis_response(analysis_response.content)
             
-            # Create ResumeAnalysis object
+            # Create ResumeAnalysis object with fallback values
             resume_analysis = ResumeAnalysis(
                 extracted_skills=analysis_data.get("skills", []),
                 experience_years=analysis_data.get("experience_years", 0.0),
-                education=analysis_data.get("education"),
-                current_company=analysis_data.get("current_company"),
+                education=analysis_data.get("education", "Not specified"),
+                current_company=analysis_data.get("current_company", "Not specified"),
                 previous_companies=analysis_data.get("previous_companies", []),
                 projects=analysis_data.get("projects", []),
                 certifications=analysis_data.get("certifications", []),
@@ -95,33 +95,29 @@ class ResumeAnalyzer:
                 confidence_score=0.1
             )
     
-    async def _extract_text_from_files(self, resume_files: List[UploadedFileData]) -> str:
+    async def _extract_text_from_files(self, resume_files: List[Dict[str, Any]]) -> str:
         """
         Extract text content from resume files.
         
         Args:
-            resume_files: List of resume files
+            resume_files: List of resume file content dictionaries
             
         Returns:
             str: Combined text content from all files
         """
-        # For now, extract text directly from UploadedFileData content
+        # Extract text directly from file content
         combined_text = ""
         for file_data in resume_files:
-            combined_text += f"\n--- {file_data.name} ---\n"
-            # Decode base64 content
-            import base64
+            combined_text += f"\n--- {file_data['name']} ---\n"
+            # Handle binary content
             try:
-                # Strip data URL prefix if present (e.g., "data:application/pdf;base64,")
-                content = file_data.content
-                if content.startswith('data:'):
-                    # Find the base64 part after the comma
-                    content = content.split(',', 1)[1] if ',' in content else content
-                
-                decoded_content = base64.b64decode(content).decode('utf-8', errors='ignore')
+                if isinstance(file_data['content'], bytes):
+                    decoded_content = file_data['content'].decode('utf-8', errors='ignore')
+                else:
+                    decoded_content = str(file_data['content'])
                 combined_text += decoded_content
             except Exception as e:
-                logger.warning(f"Failed to decode file {file_data.name}: {e}")
+                logger.warning(f"Failed to decode file {file_data['name']}: {e}")
                 combined_text += f"Error decoding file content: {e}"
         
         return combined_text

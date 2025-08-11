@@ -1,23 +1,19 @@
 """
 File upload service for IntervueBot.
 
-This module handles file uploads, storage, validation, and processing
-for resumes, CVs, and cover letters.
+This module handles file uploads, storage, and management including
+resumes, CVs, and cover letters for interview preparation.
 """
 
+import logging
 import os
 import uuid
-import logging
-import asyncio
-from typing import List, Dict, Any, Optional
-from pathlib import Path
-import aiofiles
-import aiohttp
 from datetime import datetime
-from urllib.parse import urlparse
+from typing import List, Optional, Dict, Any
+from pathlib import Path
 
-from intervuebot.schemas.interview import ResumeFile
-from intervuebot.core.config import settings
+from ..schemas.file import FileInfo
+from ..core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,272 +22,249 @@ class FileUploadService:
     """
     Service for handling file uploads and storage.
     
-    This service handles:
-    - File upload validation
-    - File storage and organization
-    - File type detection and validation
-    - File URL generation
-    - File metadata management
+    This service manages file storage, retrieval, and cleanup
+    for interview-related documents.
     """
     
     def __init__(self):
         """Initialize the file upload service."""
-        self.upload_dir = Path("uploads")
+        self.upload_dir = Path(settings.UPLOAD_DIR) if hasattr(settings, 'UPLOAD_DIR') else Path("uploads")
         self.upload_dir.mkdir(exist_ok=True)
         
-        # Create subdirectories for different file types
-        self.resume_dir = self.upload_dir / "resumes"
-        self.cv_dir = self.upload_dir / "cvs"
-        self.cover_letter_dir = self.upload_dir / "cover_letters"
+        # Create subdirectories
+        (self.upload_dir / "resumes").mkdir(exist_ok=True)
+        (self.upload_dir / "cvs").mkdir(exist_ok=True)
+        (self.upload_dir / "cover_letters").mkdir(exist_ok=True)
         
-        for directory in [self.resume_dir, self.cv_dir, self.cover_letter_dir]:
-            directory.mkdir(exist_ok=True)
-        
-        self.supported_extensions = {
-            '.pdf': 'application/pdf',
-            '.doc': 'application/msword',
-            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            '.txt': 'text/plain',
-            '.rtf': 'application/rtf'
-        }
-        
-        self.max_file_size = 10 * 1024 * 1024  # 10MB
-        self.allowed_file_types = ['resume', 'cv', 'cover_letter']
+        logger.info(f"File upload service initialized with directory: {self.upload_dir}")
     
-    async def upload_files(self, files: List[Dict[str, Any]]) -> List[ResumeFile]:
+    async def store_file(
+        self,
+        file_id: str,
+        filename: str,
+        file_type: str,
+        content: bytes
+    ) -> FileInfo:
         """
-        Upload and process multiple files.
+        Store a file with unique identifier.
         
         Args:
-            files: List of file data from frontend
+            file_id: Unique file identifier
+            filename: Original filename
+            file_type: Type of file (resume, cv, cover_letter)
+            content: File content as bytes
             
         Returns:
-            List[ResumeFile]: Processed file information
+            FileInfo: File information
         """
         try:
-            logger.info(f"Processing {len(files)} uploaded files")
-            
-            uploaded_files = []
-            
-            for file_data in files:
-                try:
-                    # Validate file data
-                    if not self._validate_file_data(file_data):
-                        logger.warning(f"Invalid file data: {file_data.get('name', 'unknown')}")
-                        continue
-                    
-                    # Process and store file
-                    resume_file = await self._process_single_file(file_data)
-                    if resume_file:
-                        uploaded_files.append(resume_file)
-                        
-                except Exception as e:
-                    logger.error(f"Error processing file {file_data.get('name', 'unknown')}: {e}")
-                    continue
-            
-            logger.info(f"Successfully processed {len(uploaded_files)} files")
-            return uploaded_files
-            
-        except Exception as e:
-            logger.error(f"Error in upload_files: {e}")
-            raise Exception(f"File upload failed: {str(e)}")
-    
-    def _validate_file_data(self, file_data: Dict[str, Any]) -> bool:
-        """
-        Validate file data from frontend.
-        
-        Args:
-            file_data: File data from frontend
-            
-        Returns:
-            bool: True if valid, False otherwise
-        """
-        required_fields = ['name', 'type', 'size', 'content']
-        
-        # Check required fields
-        for field in required_fields:
-            if field not in file_data:
-                logger.warning(f"Missing required field: {field}")
-                return False
-        
-        # Validate file size
-        if file_data['size'] > self.max_file_size:
-            logger.warning(f"File too large: {file_data['size']} bytes")
-            return False
-        
-        # Validate file type
-        if file_data['type'] not in self.allowed_file_types:
-            logger.warning(f"Invalid file type: {file_data['type']}")
-            return False
-        
-        # Validate file extension
-        file_extension = Path(file_data['name']).suffix.lower()
-        if file_extension not in self.supported_extensions:
-            logger.warning(f"Unsupported file extension: {file_extension}")
-            return False
-        
-        return True
-    
-    async def _process_single_file(self, file_data: Dict[str, Any]) -> Optional[ResumeFile]:
-        """
-        Process a single file upload.
-        
-        Args:
-            file_data: File data from frontend
-            
-        Returns:
-            Optional[ResumeFile]: Processed file information
-        """
-        try:
-            # Generate unique filename
-            original_name = file_data['name']
-            file_extension = Path(original_name).suffix.lower()
-            unique_filename = f"{uuid.uuid4()}{file_extension}"
-            
-            # Determine storage directory based on file type
-            if file_data['type'] == 'resume':
-                storage_dir = self.resume_dir
-            elif file_data['type'] == 'cv':
-                storage_dir = self.cv_dir
-            elif file_data['type'] == 'cover_letter':
-                storage_dir = self.cover_letter_dir
+            # Determine subdirectory based on file type
+            if file_type == "cv":
+                subdir = "cvs"
+            elif file_type == "cover_letter":
+                subdir = "cover_letters"
             else:
-                storage_dir = self.upload_dir
+                subdir = "resumes"  # Default to resumes
             
             # Create file path
-            file_path = storage_dir / unique_filename
+            file_path = self.upload_dir / subdir / f"{file_id}_{filename}"
             
-            # Decode and save file content
-            file_content = file_data['content']
-            if isinstance(file_content, str):
-                # Handle base64 encoded content
-                import base64
-                file_bytes = base64.b64decode(file_content.split(',')[1] if ',' in file_content else file_content)
-            else:
-                file_bytes = file_content
+            # Write file content
+            with open(file_path, "wb") as f:
+                f.write(content)
             
-            # Save file
-            async with aiofiles.open(file_path, 'wb') as f:
-                await f.write(file_bytes)
-            
-            # Generate file URL
-            file_url = f"/uploads/{file_data['type']}/{unique_filename}"
-            
-            # Create ResumeFile object
-            resume_file = ResumeFile(
-                filename=original_name,
-                file_url=file_url,
-                file_type=file_data['type']
+            # Create file info
+            file_info = FileInfo(
+                file_id=file_id,
+                filename=filename,
+                file_type=file_type,
+                size=len(content),
+                uploaded_at=datetime.utcnow()
             )
             
-            logger.info(f"Successfully processed file: {original_name} -> {file_path}")
-            return resume_file
+            logger.info(f"Stored file: {file_id} at {file_path}")
+            return file_info
             
         except Exception as e:
-            logger.error(f"Error processing file {file_data.get('name', 'unknown')}: {e}")
-            return None
+            logger.error(f"Failed to store file {file_id}: {e}")
+            raise
     
-    async def get_file_content(self, file_url: str) -> Optional[bytes]:
+    async def get_file_info(self, file_id: str) -> Optional[FileInfo]:
         """
-        Get file content from URL.
+        Get file information by ID.
         
         Args:
-            file_url: File URL
+            file_id: Unique file identifier
             
         Returns:
-            Optional[bytes]: File content
+            Optional[FileInfo]: File information or None if not found
         """
         try:
-            # Parse URL and get file path
-            parsed_url = urlparse(file_url)
-            file_path = self.upload_dir / parsed_url.path.lstrip('/uploads/')
+            # Search for file in all subdirectories
+            for subdir in ["resumes", "cvs", "cover_letters"]:
+                subdir_path = self.upload_dir / subdir
+                if subdir_path.exists():
+                    for file_path in subdir_path.iterdir():
+                        if file_path.name.startswith(file_id + "_"):
+                            # Extract filename (remove file_id_ prefix)
+                            filename = file_path.name[len(file_id) + 1:]
+                            
+                            # Determine file type from subdirectory
+                            file_type = subdir.rstrip('s')  # Remove 's' from end
+                            
+                            # Get file size
+                            size = file_path.stat().st_size
+                            
+                            # Get upload time (use file modification time as approximation)
+                            uploaded_at = datetime.fromtimestamp(file_path.stat().st_mtime)
+                            
+                            return FileInfo(
+                                file_id=file_id,
+                                filename=filename,
+                                file_type=file_type,
+                                size=size,
+                                uploaded_at=uploaded_at
+                            )
             
-            if not file_path.exists():
-                logger.warning(f"File not found: {file_path}")
-                return None
-            
-            # Read file content
-            async with aiofiles.open(file_path, 'rb') as f:
-                content = await f.read()
-            
-            return content
+            logger.warning(f"File not found: {file_id}")
+            return None
             
         except Exception as e:
-            logger.error(f"Error reading file {file_url}: {e}")
+            logger.error(f"Failed to get file info for {file_id}: {e}")
             return None
     
-    def validate_file_type(self, filename: str) -> bool:
+    async def get_file_content(self, file_id: str) -> Optional[bytes]:
         """
-        Validate if file type is supported.
+        Get file content by ID.
         
         Args:
-            filename: Name of the file
+            file_id: Unique file identifier
             
         Returns:
-            bool: True if file type is supported
+            Optional[bytes]: File content or None if not found
         """
-        file_extension = Path(filename).suffix.lower()
-        return file_extension in self.supported_extensions
+        try:
+            # Search for file in all subdirectories
+            for subdir in ["resumes", "cvs", "cover_letters"]:
+                subdir_path = self.upload_dir / subdir
+                if subdir_path.exists():
+                    for file_path in subdir_path.iterdir():
+                        if file_path.name.startswith(file_id + "_"):
+                            with open(file_path, "rb") as f:
+                                return f.read()
+            
+            logger.warning(f"File content not found: {file_id}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get file content for {file_id}: {e}")
+            return None
     
-    def get_file_metadata(self, files: List[ResumeFile]) -> Dict[str, Any]:
+    async def delete_file(self, file_id: str) -> bool:
         """
-        Get metadata about uploaded files.
+        Delete a file by ID.
         
         Args:
-            files: List of uploaded files
+            file_id: Unique file identifier
             
         Returns:
-            Dict[str, Any]: File metadata
+            bool: True if deleted, False if not found
         """
-        metadata = {
-            "total_files": len(files),
-            "file_types": {},
-            "supported_files": 0,
-            "unsupported_files": 0,
-            "total_size": 0
-        }
-        
-        for file_info in files:
-            file_type = file_info.file_type
-            if file_type not in metadata["file_types"]:
-                metadata["file_types"][file_type] = 0
-            metadata["file_types"][file_type] += 1
+        try:
+            # Search for file in all subdirectories
+            for subdir in ["resumes", "cvs", "cover_letters"]:
+                subdir_path = self.upload_dir / subdir
+                if subdir_path.exists():
+                    for file_path in subdir_path.iterdir():
+                        if file_path.name.startswith(file_id + "_"):
+                            file_path.unlink()
+                            logger.info(f"Deleted file: {file_id}")
+                            return True
             
-            if self.validate_file_type(file_info.filename):
-                metadata["supported_files"] += 1
-            else:
-                metadata["unsupported_files"] += 1
+            logger.warning(f"File not found for deletion: {file_id}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Failed to delete file {file_id}: {e}")
+            return False
+    
+    async def list_files(self, file_type: Optional[str] = None) -> List[FileInfo]:
+        """
+        List all stored files.
         
-        return metadata
+        Args:
+            file_type: Optional filter by file type
+            
+        Returns:
+            List[FileInfo]: List of file information
+        """
+        try:
+            files = []
+            
+            # Determine which subdirectories to search
+            subdirs = [file_type] if file_type else ["resumes", "cvs", "cover_letters"]
+            
+            for subdir in subdirs:
+                subdir_path = self.upload_dir / subdir
+                if subdir_path.exists():
+                    for file_path in subdir_path.iterdir():
+                        if file_path.is_file():
+                            # Extract file_id and filename
+                            parts = file_path.name.split("_", 1)
+                            if len(parts) == 2:
+                                file_id, filename = parts
+                                
+                                # Determine file type from subdirectory
+                                actual_file_type = subdir.rstrip('s')
+                                
+                                # Get file size and upload time
+                                size = file_path.stat().st_size
+                                uploaded_at = datetime.fromtimestamp(file_path.stat().st_mtime)
+                                
+                                files.append(FileInfo(
+                                    file_id=file_id,
+                                    filename=filename,
+                                    file_type=actual_file_type,
+                                    size=size,
+                                    uploaded_at=uploaded_at
+                                ))
+            
+            return files
+            
+        except Exception as e:
+            logger.error(f"Failed to list files: {e}")
+            return []
     
     async def cleanup_old_files(self, max_age_hours: int = 24) -> int:
         """
-        Clean up old uploaded files.
+        Clean up old files.
         
         Args:
-            max_age_hours: Maximum age of files in hours
+            max_age_hours: Maximum age in hours before deletion
             
         Returns:
-            int: Number of files cleaned up
+            int: Number of files deleted
         """
         try:
-            cleaned_count = 0
-            cutoff_time = datetime.now().timestamp() - (max_age_hours * 3600)
+            deleted_count = 0
+            cutoff_time = datetime.utcnow().timestamp() - (max_age_hours * 3600)
             
-            for directory in [self.resume_dir, self.cv_dir, self.cover_letter_dir]:
-                for file_path in directory.iterdir():
-                    if file_path.is_file():
-                        file_age = file_path.stat().st_mtime
-                        if file_age < cutoff_time:
-                            file_path.unlink()
-                            cleaned_count += 1
-                            logger.info(f"Cleaned up old file: {file_path}")
+            for subdir in ["resumes", "cvs", "cover_letters"]:
+                subdir_path = self.upload_dir / subdir
+                if subdir_path.exists():
+                    for file_path in subdir_path.iterdir():
+                        if file_path.is_file():
+                            file_time = file_path.stat().st_mtime
+                            if file_time < cutoff_time:
+                                file_path.unlink()
+                                deleted_count += 1
+                                logger.info(f"Cleaned up old file: {file_path.name}")
             
-            logger.info(f"Cleaned up {cleaned_count} old files")
-            return cleaned_count
+            logger.info(f"Cleanup completed: {deleted_count} files deleted")
+            return deleted_count
             
         except Exception as e:
-            logger.error(f"Error cleaning up old files: {e}")
+            logger.error(f"Failed to cleanup old files: {e}")
             return 0
 
 
