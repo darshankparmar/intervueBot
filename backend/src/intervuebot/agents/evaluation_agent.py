@@ -5,6 +5,7 @@ This module implements the evaluation agent that scores candidate responses
 and provides detailed feedback using the Agno framework.
 """
 
+import datetime
 import logging
 from typing import Dict, List, Any
 
@@ -246,20 +247,26 @@ class EvaluationAgent:
             final_report = {
                 "session_id": session_id,
                 "candidate": candidate_profile,
+                "position": candidate_profile.get("position", "Unknown"),
                 "overall_score": round(overall_score, 1),
                 "technical_score": round(overall_score * 0.4, 1),
-                "communication_score": round(overall_score * 0.3, 1),
-                "problem_solving_score": round(overall_score * 0.3, 1),
-                "hiring_recommendation": hiring_recommendation,
-                "confidence_level": confidence_level,
+                "behavioral_score": round(overall_score * 0.2, 1),
+                "communication_score": round(overall_score * 0.2, 1),
+                "problem_solving_score": round(overall_score * 0.2, 1),
+                "cultural_fit_score": None,
+                "strengths": self._extract_strengths(responses, overall_score),
+                "areas_for_improvement": self._extract_improvement_areas(responses, overall_score),
+                "skill_gaps": [],
+                "recommendations": self._generate_recommendations(hiring_recommendation, overall_score),
                 "total_questions": total_questions,
                 "total_responses": total_responses,
                 "average_response_time": round(average_response_time, 1),
-                "detailed_analysis": report_response.content,
-                "strengths": self._extract_strengths(responses, overall_score),
-                "areas_for_improvement": self._extract_improvement_areas(responses, overall_score),
-                "recommendations": self._generate_recommendations(hiring_recommendation, overall_score),
-                "timestamp": "2024-01-01T00:00:00Z"  # TODO: Add proper timestamp
+                "difficulty_progression": [],
+                "hiring_recommendation": hiring_recommendation,
+                "confidence_level": confidence_level,
+                "detailed_feedback": report_response.content if report_response else "No feedback generated",
+                "generated_at": "2024-01-01T00:00:00Z",
+                "interview_duration": sum(response_times) / 60 if response_times else 0.0,
             }
             
             logger.info(f"Generated final report for session {session_id}")
