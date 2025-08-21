@@ -28,7 +28,7 @@ class EvaluationAgent:
         """Initialize the evaluation agent."""
         # Initialize LLM with Google Gemini
         self.agent = Agent(
-            model=Gemini(id="gemini-2.0-flash-lite", api_key=settings.GOOGLE_API_KEY),
+            model=Gemini(id="gemini-1.5-flash-8b", api_key=settings.GOOGLE_API_KEY),
             name="EvaluationBot",
             role="Interview Response Evaluator",
             goal="Provide comprehensive and fair evaluation of candidate responses with detailed feedback",

@@ -40,7 +40,7 @@ const InterviewPage: React.FC = () => {
   
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [response, setResponse] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [evaluation, setEvaluation] = useState<ResponseEvaluation | null>(null);
@@ -104,6 +104,10 @@ const InterviewPage: React.FC = () => {
   const loadNextQuestion = async () => {
     if (!sessionId) {
       console.log('No sessionId available');
+      return;
+    }
+
+    if (loading) {
       return;
     }
     

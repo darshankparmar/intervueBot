@@ -36,7 +36,7 @@ class AdaptiveInterviewAgent:
     def __init__(self):
         """Initialize the adaptive interview agent."""
         self.agent = Agent(
-            model=Gemini(id="gemini-2.0-flash"),
+            model=Gemini(id="gemini-1.5-flash"),
             name="AdaptiveInterviewBot",
             role="Adaptive Interview Conductor",
             goal="Conduct intelligent, adaptive interviews that adjust based on candidate responses and background",
@@ -344,7 +344,7 @@ class AdaptiveInterviewAgent:
         for response in recent_responses:
             # Simple keyword extraction (in real implementation, use NLP)
             keywords = ["python", "javascript", "react", "node", "database", "api", "testing"]
-            response_lower = response.answer.lower()
+            response_lower = response['answer'].lower()
             
             for keyword in keywords:
                 if keyword in response_lower:
@@ -501,7 +501,7 @@ class AdaptiveInterviewAgent:
                 "experience_level": getattr(candidate_profile, 'experience_level', candidate_profile.get('experience_level', 'mid-level')),
                 "resume_skills": getattr(resume_analysis, 'extracted_skills', resume_analysis.get('extracted_skills', [])) if resume_analysis else [],
                 "question_category": question.category if hasattr(question, 'category') else 'technical',
-                "question_difficulty": question.difficulty if hasattr(question, 'difficulty') else 'medium'
+                "question_difficulty": question.difficulty if hasattr(question, 'difficulty') else 'medium',
             }
             
             # Generate evaluation using AI
@@ -584,7 +584,6 @@ class AdaptiveInterviewAgent:
         Response: {context['response']}
         
         Resume Skills: {', '.join(context['resume_skills'][:5])}
-        Resume Experience: {context['resume_experience']} years
         
         Evaluate on a scale of 1-10 for each criterion:
         1. Technical accuracy (for technical questions)
@@ -610,6 +609,7 @@ class AdaptiveInterviewAgent:
             "skill_gaps": ["Advanced system design"]
         }}
         
+        suggested_difficulty values must be : EASY = "easy" or "medium" or "hard"
         Return only valid JSON.
         """
     
