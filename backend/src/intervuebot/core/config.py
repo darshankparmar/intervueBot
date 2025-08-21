@@ -8,8 +8,15 @@ for type safety and environment variable support.
 import secrets
 from typing import Any, Dict, List, Optional, Union
 
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 from pydantic import AnyHttpUrl, EmailStr, HttpUrl, PostgresDsn, validator
 from pydantic_settings import BaseSettings
+
+# Load environment variables from .env file
+env_path = Path(__file__).resolve().parents[3] / '.env'
+load_dotenv(dotenv_path=env_path)
 
 
 class Settings(BaseSettings):
@@ -31,7 +38,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # CORS
-    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
+    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     @validator("BACKEND_CORS_ORIGINS", pre=True)
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> Union[List[str], str]:

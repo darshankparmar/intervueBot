@@ -1,134 +1,213 @@
 """
-Interview-related Pydantic schemas.
+Interview-related Pydantic models and schemas.
 
-This module contains all Pydantic models for interview data validation
-and serialization.
+This module defines all the data structures used for interview management,
+including candidate profiles, questions, responses, and evaluation results.
 """
 
+from typing import List, Optional, Dict, Any
 from datetime import datetime
-from typing import List, Optional, Dict
+from pydantic import BaseModel, EmailStr, Field
+from enum import Enum
+from intervuebot.schemas.file import FileReference
 
-from pydantic import BaseModel, Field
+
+class ExperienceLevel(str, Enum):
+    """Experience level enumeration."""
+    JUNIOR = "junior"
+    MID_LEVEL = "mid-level"
+    SENIOR = "senior"
+    LEAD = "lead"
+
+
+class InterviewType(str, Enum):
+    """Interview type enumeration."""
+    TECHNICAL = "technical"
+    BEHAVIORAL = "behavioral"
+    MIXED = "mixed"
+    LEADERSHIP = "leadership"
+
+
+class DifficultyLevel(str, Enum):
+    """Question difficulty level."""
+    EASY = "easy"
+    MEDIUM = "medium"
+    HARD = "hard"
+
+
+class InterviewPhase(str, Enum):
+    """Interview phase enumeration."""
+    INTRODUCTION = "introduction"
+    TECHNICAL = "technical"
+    BEHAVIORAL = "behavioral"
+    LEADERSHIP = "leadership"
+    CLOSING = "closing"
+
+
+class ResumeFile(BaseModel):
+    """Resume file information."""
+    filename: str = Field(..., description="Original filename")
+    file_url: str = Field(..., description="File URL for access")
+    file_type: str = Field(..., description="Type of file (resume, cv, cover_letter)")
+
+
+class UploadedFileData(BaseModel):
+    """Uploaded file data from frontend."""
+    name: str = Field(..., description="Original filename")
+    type: str = Field(..., description="Type of file (resume, cv, cover_letter)")
+    size: int = Field(..., description="File size in bytes")
+    content: str = Field(..., description="File content as base64 string")
+
+
+class ResumeAnalysis(BaseModel):
+    """Resume analysis results."""
+    extracted_skills: List[str] = Field(default_factory=list, description="Extracted skills from resume")
+    experience_years: float = Field(0.0, description="Years of experience")
+    education: Optional[str] = Field(None, description="Education information")
+    current_company: Optional[str] = Field(None, description="Current company")
+    previous_companies: List[str] = Field(default_factory=list, description="Previous companies")
+    projects: List[Dict[str, Any]] = Field(default_factory=list, description="Projects mentioned")
+    certifications: List[str] = Field(default_factory=list, description="Certifications")
+    languages: List[str] = Field(default_factory=list, description="Programming languages")
+    technologies: List[str] = Field(default_factory=list, description="Technologies and tools")
+    confidence_score: float = Field(0.0, ge=0.0, le=1.0, description="Analysis confidence score")
 
 
 class CandidateProfile(BaseModel):
     """Candidate profile information."""
-    
     name: str = Field(..., description="Candidate's full name")
-    email: str = Field(..., description="Candidate's email address")
-    phone: Optional[str] = Field(None, description="Candidate's phone number")
-    position: str = Field(..., description="Position being interviewed for")
-    experience_years: int = Field(..., ge=0, description="Years of experience")
-    skills: List[str] = Field(default_factory=list, description="List of technical skills")
-    resume_url: Optional[str] = Field(None, description="Link to candidate's resume")
-    linkedin_url: Optional[str] = Field(None, description="LinkedIn profile URL")
-    github_url: Optional[str] = Field(None, description="GitHub profile URL")
-    portfolio_url: Optional[str] = Field(None, description="Portfolio website URL")
-    current_company: Optional[str] = Field(None, description="Current company")
-    education: Optional[str] = Field(None, description="Educational background")
-    preferred_interview_type: str = Field(default="technical", description="Preferred interview type")
-    availability: Optional[str] = Field(None, description="Interview availability")
+    email: EmailStr = Field(..., description="Candidate's email address")
+    position: str = Field(..., description="Position being applied for")
+    experience_level: ExperienceLevel = Field(..., description="Experience level")
+    interview_type: InterviewType = Field(..., description="Type of interview")
+    files: List[FileReference] = Field(default_factory=list, description="Uploaded file references")
+
+
+class CandidateProfileWithAnalysis(CandidateProfile):
+    """Candidate profile with resume analysis."""
+    resume_analysis: Optional[ResumeAnalysis] = Field(None, description="Resume analysis results")
 
 
 class Question(BaseModel):
     """Interview question model."""
-    
-    id: str = Field(..., description="Unique question identifier")
+    id: str = Field(..., description="Unique question ID")
     text: str = Field(..., description="Question text")
-    category: str = Field(..., description="Question category (technical, behavioral, etc.)")
-    difficulty: str = Field(..., description="Question difficulty level")
-    expected_duration: int = Field(..., ge=30, le=600, description="Expected answer duration in seconds")
+    category: str = Field(..., description="Question category")
+    difficulty: DifficultyLevel = Field(..., description="Question difficulty")
+    expected_duration: int = Field(..., description="Expected answer duration in seconds")
+    context: Optional[Dict[str, Any]] = Field(None, description="Question context")
+    follow_up_hints: List[str] = Field(default_factory=list, description="Follow-up hints")
 
 
 class Response(BaseModel):
     """Candidate response model."""
-    
-    question_id: str = Field(..., description="ID of the question being answered")
+    question_id: str = Field(..., description="Question ID being answered")
     answer: str = Field(..., description="Candidate's answer")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")
-    evaluation_score: Optional[float] = Field(None, ge=0, le=10, description="Response evaluation score")
+    time_taken: int = Field(..., description="Time taken to answer in seconds")
+    evaluation_score: Optional[float] = Field(None, description="Evaluation score")
+    evaluation_details: Optional[Dict[str, Any]] = Field(None, description="Detailed evaluation")
 
 
-class InterviewCreate(BaseModel):
-    """Request model for creating a new interview."""
-    
-    candidate: CandidateProfile = Field(..., description="Candidate information")
-    position: str = Field(..., description="Position being interviewed for")
-    interview_type: str = Field(default="technical", description="Type of interview")
-    duration_minutes: int = Field(default=30, ge=15, le=120, description="Interview duration in minutes")
+class ResponseEvaluation(BaseModel):
+    """Response evaluation results."""
+    overall_score: float = Field(..., ge=0.0, le=10.0, description="Overall response score")
+    technical_accuracy: float = Field(..., ge=0.0, le=10.0, description="Technical accuracy score")
+    communication_clarity: float = Field(..., ge=0.0, le=10.0, description="Communication clarity score")
+    problem_solving_approach: float = Field(..., ge=0.0, le=10.0, description="Problem-solving approach score")
+    experience_relevance: float = Field(..., ge=0.0, le=10.0, description="Experience relevance score")
+    strengths: List[str] = Field(default_factory=list, description="Identified strengths")
+    areas_for_improvement: List[str] = Field(default_factory=list, description="Areas for improvement")
+    suggestions: List[str] = Field(default_factory=list, description="Suggestions for improvement")
+    suggested_difficulty: DifficultyLevel = Field(..., description="Suggested next question difficulty")
+    follow_up_questions: List[str] = Field(default_factory=list, description="Suggested follow-up questions")
+    skill_gaps: List[str] = Field(default_factory=list, description="Identified skill gaps")
 
 
-class InterviewResponse(BaseModel):
-    """Response model for interview session."""
-    
-    session_id: str = Field(..., description="Unique session identifier")
-    candidate: CandidateProfile = Field(..., description="Candidate information")
-    position: str = Field(..., description="Position being interviewed for")
-    status: str = Field(..., description="Interview status")
-    started_at: datetime = Field(..., description="Interview start time")
-    ended_at: Optional[datetime] = Field(None, description="Interview end time")
-    total_questions: int = Field(default=0, description="Total questions asked")
-    completed_questions: int = Field(default=0, description="Completed questions")
+class SubmitResponseResult(BaseModel):
+    """Response submission result."""
+    status: str = Field(..., description="Submission status")
+    message: str = Field(..., description="Status message")
+    evaluation: ResponseEvaluation = Field(..., description="Response evaluation")
+    next_steps: str = Field(..., description="Next steps guidance")
 
 
-class QuestionResponse(BaseModel):
-    """Response model for interview questions."""
-    
-    question: Question = Field(..., description="Question details")
+class FinalizeResult(BaseModel):
+    """Interview finalization result."""
+    status: str = Field(..., description="Finalization status")
+    message: str = Field(..., description="Status message")
     session_id: str = Field(..., description="Interview session ID")
-    question_number: int = Field(..., description="Question number in sequence")
-    time_limit: int = Field(..., description="Time limit for answering in seconds")
-
-
-class ResponseSubmit(BaseModel):
-    """Request model for submitting a response."""
-    
-    question_id: str = Field(..., description="ID of the question being answered")
-    answer: str = Field(..., description="Candidate's answer")
-    time_taken: int = Field(..., ge=0, description="Time taken to answer in seconds")
-
-
-class InterviewPhase(BaseModel):
-    """Interview phase information."""
-    
-    phase_name: str = Field(..., description="Name of the interview phase")
-    phase_order: int = Field(..., description="Order of the phase in interview sequence")
-    description: str = Field(..., description="Description of what this phase covers")
-    estimated_duration: int = Field(..., description="Estimated duration in minutes")
-    question_count: int = Field(..., description="Number of questions in this phase")
-    difficulty_level: str = Field(..., description="Difficulty level for this phase")
+    report_summary: Dict[str, Any] = Field(..., description="Report summary")
 
 
 class InterviewSession(BaseModel):
-    """Enhanced interview session model."""
-    
-    session_id: str = Field(..., description="Unique session identifier")
-    candidate: CandidateProfile = Field(..., description="Candidate information")
-    position: str = Field(..., description="Position being interviewed for")
-    interview_type: str = Field(..., description="Type of interview")
-    current_phase: str = Field(default="introduction", description="Current interview phase")
-    phases: List[InterviewPhase] = Field(default_factory=list, description="Interview phases")
-    total_duration: int = Field(..., description="Total interview duration in minutes")
-    status: str = Field(default="in_progress", description="Interview status")
-    started_at: datetime = Field(..., description="Interview start time")
-    current_question_index: int = Field(default=0, description="Current question index")
-    responses: List[Response] = Field(default_factory=list, description="Candidate responses")
-    evaluations: List[Dict] = Field(default_factory=list, description="Response evaluations")
+    """Interview session model."""
+    session_id: str = Field(..., description="Unique session ID")
+    candidate: CandidateProfileWithAnalysis = Field(..., description="Candidate profile with analysis")
+    position: str = Field(..., description="Position being applied for")
+    status: str = Field(..., description="Session status")
+    started_at: str = Field(..., description="Session start time")
+    current_question_index: int = Field(0, description="Current question index")
+    total_questions_asked: int = Field(0, description="Total questions asked")
+    average_score: float = Field(0.0, description="Average response score")
+    responses: List[Response] = Field(default_factory=list, description="Session responses")
+    questions: List[Question] = Field(default_factory=list, description="Session questions")
+
+
+class InterviewCreate(BaseModel):
+    """Interview creation request."""
+    candidate: CandidateProfile = Field(..., description="Candidate profile")
+    duration_minutes: int = Field(..., ge=30, le=120, description="Interview duration in minutes")
+
+
+class InterviewResponse(BaseModel):
+    """Interview response model."""
+    session_id: str = Field(..., description="Interview session ID")
+    candidate: CandidateProfileWithAnalysis = Field(..., description="Candidate profile with analysis")
+    position: str = Field(..., description="Position being applied for")
+    status: str = Field(..., description="Interview status")
+    started_at: str = Field(..., description="Interview start time")
+    current_question_index: int = Field(0, description="Current question index")
+    total_questions_asked: int = Field(0, description="Total questions asked")
+    average_score: float = Field(0.0, description="Average response score")
+
+
+class QuestionResponse(BaseModel):
+    """Question response model."""
+    question: Question = Field(..., description="Question details")
+    session_id: str = Field(..., description="Session ID")
+    question_number: int = Field(..., description="Question number")
+    time_limit: int = Field(..., description="Time limit in seconds")
+    context: Optional[Dict[str, Any]] = Field(None, description="Question context")
+
+
+class ResponseSubmit(BaseModel):
+    """Response submission model."""
+    question_id: str = Field(..., description="Question ID")
+    answer: str = Field(..., description="Candidate's answer")
+    time_taken: int = Field(..., description="Time taken in seconds")
 
 
 class InterviewReport(BaseModel):
-    """Interview evaluation report."""
-    
-    session_id: str = Field(..., description="Interview session ID")
-    candidate: CandidateProfile = Field(..., description="Candidate information")
-    overall_score: float = Field(..., ge=0, le=10, description="Overall interview score")
-    technical_score: Optional[float] = Field(None, ge=0, le=10, description="Technical skills score")
-    behavioral_score: Optional[float] = Field(None, ge=0, le=10, description="Behavioral assessment score")
-    communication_score: Optional[float] = Field(None, ge=0, le=10, description="Communication skills score")
-    problem_solving_score: Optional[float] = Field(None, ge=0, le=10, description="Problem-solving skills score")
-    cultural_fit_score: Optional[float] = Field(None, ge=0, le=10, description="Cultural fit assessment score")
+    """Interview report model."""
+    session_id: str = Field(..., description="Session ID")
+    candidate: CandidateProfileWithAnalysis = Field(..., description="Candidate profile")
+    position: str = Field(..., description="Position applied for")
+    overall_score: float = Field(..., ge=0.0, le=10.0, description="Overall interview score")
+    technical_score: Optional[float] = Field(None, ge=0.0, le=10.0, description="Technical skills score")
+    behavioral_score: Optional[float] = Field(None, ge=0.0, le=10.0, description="Behavioral skills score")
+    communication_score: Optional[float] = Field(None, ge=0.0, le=10.0, description="Communication score")
+    problem_solving_score: Optional[float] = Field(None, ge=0.0, le=10.0, description="Problem-solving score")
+    cultural_fit_score: Optional[float] = Field(None, ge=0.0, le=10.0, description="Cultural fit score")
     strengths: List[str] = Field(default_factory=list, description="Candidate strengths")
     areas_for_improvement: List[str] = Field(default_factory=list, description="Areas for improvement")
+    skill_gaps: List[str] = Field(default_factory=list, description="Identified skill gaps")
     recommendations: List[str] = Field(default_factory=list, description="Recommendations")
-    phase_scores: Dict[str, float] = Field(default_factory=dict, description="Scores by interview phase")
-    generated_at: datetime = Field(default_factory=datetime.utcnow, description="Report generation time") 
+    total_questions: int = Field(0, description="Total questions asked")
+    total_responses: int = Field(0, description="Total responses received")
+    average_response_time: float = Field(0.0, description="Average response time")
+    difficulty_progression: List[Dict[str, Any]] = Field(default_factory=list, description="Difficulty progression")
+    hiring_recommendation: str = Field(..., description="Hiring recommendation")
+    confidence_level: float = Field(..., ge=0.0, le=1.0, description="Confidence level")
+    detailed_feedback: str = Field(..., description="Detailed feedback")
+    generated_at: str = Field(..., description="Report generation time")
+    interview_duration: float = Field(0.0, description="Interview duration in minutes") 

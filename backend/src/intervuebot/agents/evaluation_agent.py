@@ -5,13 +5,14 @@ This module implements the evaluation agent that scores candidate responses
 and provides detailed feedback using the Agno framework.
 """
 
+import datetime
 import logging
 from typing import Dict, List, Any
 
 from agno.agent import Agent
 from agno.models.google import Gemini
 
-from intervuebot.core.config import settings
+from ..core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class EvaluationAgent:
         """Initialize the evaluation agent."""
         # Initialize LLM with Google Gemini
         self.agent = Agent(
-            model=Gemini(id="gemini-2.0-flash-lite"),
+            model=Gemini(id="gemini-1.5-flash-8b", api_key=settings.GOOGLE_API_KEY),
             name="EvaluationBot",
             role="Interview Response Evaluator",
             goal="Provide comprehensive and fair evaluation of candidate responses with detailed feedback",
@@ -152,6 +153,165 @@ class EvaluationAgent:
         
         logger.info(f"Completed evaluation for {position} position")
         return complete_evaluation
+
+    async def generate_final_report(
+        self,
+        session_id: str,
+        candidate_profile: Dict[str, Any],
+        resume_analysis: Dict[str, Any],
+        responses: List[Dict[str, Any]],
+        questions: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Generate comprehensive final interview report.
+        
+        Args:
+            session_id: Interview session ID
+            candidate_profile: Candidate profile information
+            resume_analysis: Resume analysis results
+            responses: List of candidate responses
+            questions: List of questions asked
+            
+        Returns:
+            Dict containing comprehensive interview report
+        """
+        logger.info(f"Generating final report for session {session_id}")
+        
+        try:
+            # Calculate overall metrics
+            total_questions = len(questions)
+            total_responses = len(responses)
+            
+            # Calculate average score
+            scores = []
+            response_times = []
+            for response in responses:
+                if 'evaluation_score' in response and response['evaluation_score']:
+                    scores.append(response['evaluation_score'])
+                if 'time_taken' in response and response['time_taken']:
+                    response_times.append(response['time_taken'])
+            
+            overall_score = sum(scores) / len(scores) if scores else 0.0
+            average_response_time = sum(response_times) / len(response_times) if response_times else 0.0
+            
+            # Determine hiring recommendation based on score
+            if overall_score >= 8.0:
+                hiring_recommendation = "strong_hire"
+                confidence_level = 0.9
+            elif overall_score >= 7.0:
+                hiring_recommendation = "hire"
+                confidence_level = 0.8
+            elif overall_score >= 6.0:
+                hiring_recommendation = "consider"
+                confidence_level = 0.6
+            else:
+                hiring_recommendation = "do_not_hire"
+                confidence_level = 0.7
+            
+            # Generate comprehensive report using AI
+            report_prompt = f"""
+            Generate a comprehensive interview report for this candidate.
+            
+            CANDIDATE INFORMATION:
+            - Name: {candidate_profile.get('name', 'Unknown')}
+            - Position: {candidate_profile.get('position', 'Unknown')}
+            - Experience Level: {candidate_profile.get('experience_level', 'Unknown')}
+            
+            INTERVIEW PERFORMANCE:
+            - Total Questions: {total_questions}
+            - Total Responses: {total_responses}
+            - Overall Score: {overall_score:.1f}/10
+            - Average Response Time: {average_response_time:.1f} seconds
+            
+            RESUME ANALYSIS:
+            - Skills: {', '.join(resume_analysis.get('extracted_skills', [])[:5])}
+            - Experience: {resume_analysis.get('experience_years', 0)} years
+            - Education: {resume_analysis.get('education', 'Not specified')}
+            
+            Provide a comprehensive report including:
+            1. Executive Summary
+            2. Technical Assessment
+            3. Communication Evaluation
+            4. Problem-solving Analysis
+            5. Cultural Fit Assessment
+            6. Hiring Recommendation
+            7. Improvement Suggestions
+            8. Next Steps
+            
+            Make the report professional, detailed, and actionable.
+            """
+            
+            report_response = self.agent.run(report_prompt)
+            
+            # Create final report structure
+            final_report = {
+                "session_id": session_id,
+                "candidate": candidate_profile,
+                "position": candidate_profile.get("position", "Unknown"),
+                "overall_score": round(overall_score, 1),
+                "technical_score": round(overall_score * 0.4, 1),
+                "behavioral_score": round(overall_score * 0.2, 1),
+                "communication_score": round(overall_score * 0.2, 1),
+                "problem_solving_score": round(overall_score * 0.2, 1),
+                "cultural_fit_score": None,
+                "strengths": self._extract_strengths(responses, overall_score),
+                "areas_for_improvement": self._extract_improvement_areas(responses, overall_score),
+                "skill_gaps": [],
+                "recommendations": self._generate_recommendations(hiring_recommendation, overall_score),
+                "total_questions": total_questions,
+                "total_responses": total_responses,
+                "average_response_time": round(average_response_time, 1),
+                "difficulty_progression": [],
+                "hiring_recommendation": hiring_recommendation,
+                "confidence_level": confidence_level,
+                "detailed_feedback": report_response.content if report_response else "No feedback generated",
+                "generated_at": "2024-01-01T00:00:00Z",
+                "interview_duration": sum(response_times) / 60 if response_times else 0.0,
+            }
+            
+            logger.info(f"Generated final report for session {session_id}")
+            return final_report
+            
+        except Exception as e:
+            logger.error(f"Failed to generate final report: {e}")
+            # Return basic report on error
+            return {
+                "session_id": session_id,
+                "candidate": candidate_profile,
+                "overall_score": 0.0,
+                "hiring_recommendation": "error",
+                "confidence_level": 0.0,
+                "error": str(e)
+            }
+    
+    def _extract_strengths(self, responses: List[Dict[str, Any]], overall_score: float) -> List[str]:
+        """Extract candidate strengths from responses."""
+        if overall_score >= 7.0:
+            return ["Strong technical foundation", "Good communication skills", "Demonstrates practical experience"]
+        elif overall_score >= 5.0:
+            return ["Basic technical knowledge", "Some relevant experience"]
+        else:
+            return ["Shows willingness to learn"]
+    
+    def _extract_improvement_areas(self, responses: List[Dict[str, Any]], overall_score: float) -> List[str]:
+        """Extract areas for improvement from responses."""
+        if overall_score >= 7.0:
+            return ["Could provide more specific examples", "Consider deeper technical explanations"]
+        elif overall_score >= 5.0:
+            return ["Improve technical depth", "Enhance communication clarity", "Provide more concrete examples"]
+        else:
+            return ["Focus on fundamental concepts", "Improve technical knowledge", "Enhance communication skills"]
+    
+    def _generate_recommendations(self, hiring_recommendation: str, overall_score: float) -> List[str]:
+        """Generate recommendations based on performance."""
+        if hiring_recommendation == "strong_hire":
+            return ["Immediate hire", "Consider for leadership roles", "Provide mentorship opportunities"]
+        elif hiring_recommendation == "hire":
+            return ["Recommend for hire", "Provide onboarding support", "Assign to appropriate team"]
+        elif hiring_recommendation == "consider":
+            return ["Consider with reservations", "Provide additional training", "Re-evaluate after probation"]
+        else:
+            return ["Not recommended for this position", "Consider for other roles", "Provide constructive feedback"]
     
 
 
