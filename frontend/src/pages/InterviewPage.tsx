@@ -48,8 +48,11 @@ const InterviewPage: React.FC = () => {
   const [questionNumber, setQuestionNumber] = useState(0);
   const [totalQuestions, setTotalQuestions] = useState(0);
 
+  const didFetch = React.useRef(false);
+
   useEffect(() => {
-    if (sessionId) {
+    if (sessionId && !didFetch.current) {
+      didFetch.current = true;
       loadNextQuestion();
     }
   }, [sessionId]);
