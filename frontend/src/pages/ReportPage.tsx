@@ -39,23 +39,26 @@ import InterviewService, { InterviewReport } from '../services/api';
 const ReportPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  
+
   const [report, setReport] = useState<InterviewReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const didFetch = React.useRef(false);
+
   useEffect(() => {
-    if (sessionId) {
+    if (sessionId && !didFetch.current) {
+      didFetch.current = true;
       loadReport();
     }
   }, [sessionId]);
 
   const loadReport = async () => {
     if (!sessionId) return;
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
       const reportData = await InterviewService.getInterviewReport(sessionId);
       setReport(reportData);
@@ -149,7 +152,7 @@ const ReportPage: React.FC = () => {
                   <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
                     Candidate Information
                   </Typography>
-                  
+
                   <Box sx={{ mt: 3 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                       <User size={20} style={{ marginRight: 8 }} />
@@ -157,21 +160,21 @@ const ReportPage: React.FC = () => {
                         {report.candidate.name}
                       </Typography>
                     </Box>
-                    
+
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                       <Mail size={20} style={{ marginRight: 8 }} />
                       <Typography variant="body2" color="text.secondary">
                         {report.candidate.email}
                       </Typography>
                     </Box>
-                    
+
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                       <Briefcase size={20} style={{ marginRight: 8 }} />
                       <Typography variant="body2" color="text.secondary">
                         {report.position}
                       </Typography>
                     </Box>
-                    
+
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                       <Award size={20} style={{ marginRight: 8 }} />
                       <Typography variant="body2" color="text.secondary">
@@ -185,7 +188,7 @@ const ReportPage: React.FC = () => {
                   <Typography variant="h6" gutterBottom>
                     Interview Statistics
                   </Typography>
-                  
+
                   <Box sx={{ mt: 2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                       <Typography variant="body2">Questions Asked</Typography>
@@ -193,21 +196,21 @@ const ReportPage: React.FC = () => {
                         {report.total_questions}
                       </Typography>
                     </Box>
-                    
+
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                       <Typography variant="body2">Responses Received</Typography>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {report.total_responses}
                       </Typography>
                     </Box>
-                    
+
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                       <Typography variant="body2">Avg Response Time</Typography>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {Math.round(report.average_response_time)}s
                       </Typography>
                     </Box>
-                    
+
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                       <Typography variant="body2">Interview Duration</Typography>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -241,7 +244,7 @@ const ReportPage: React.FC = () => {
                       </Typography>
                     </Box>
                   </Box>
-                  
+
                   <LinearProgress
                     variant="determinate"
                     value={report.overall_score * 10}
@@ -256,7 +259,7 @@ const ReportPage: React.FC = () => {
                   <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
                     Detailed Assessment
                   </Typography>
-                  
+
                   <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 3 }}>
                     {report.technical_score && (
                       <Box sx={{ flex: 1 }}>
@@ -273,7 +276,7 @@ const ReportPage: React.FC = () => {
                         />
                       </Box>
                     )}
-                    
+
                     {report.communication_score && (
                       <Box sx={{ flex: 1 }}>
                         <Typography variant="body2" color="text.secondary">
@@ -289,7 +292,7 @@ const ReportPage: React.FC = () => {
                         />
                       </Box>
                     )}
-                    
+
                     {report.problem_solving_score && (
                       <Box sx={{ flex: 1 }}>
                         <Typography variant="body2" color="text.secondary">
@@ -305,7 +308,7 @@ const ReportPage: React.FC = () => {
                         />
                       </Box>
                     )}
-                    
+
                     {report.cultural_fit_score && (
                       <Box sx={{ flex: 1 }}>
                         <Typography variant="body2" color="text.secondary">
@@ -334,7 +337,7 @@ const ReportPage: React.FC = () => {
                       Hiring Recommendation
                     </Typography>
                   </Box>
-                  
+
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                     <Chip
                       label={report.hiring_recommendation.toUpperCase()}
@@ -345,7 +348,7 @@ const ReportPage: React.FC = () => {
                       Confidence: {Math.round(report.confidence_level * 100)}%
                     </Typography>
                   </Box>
-                  
+
                   <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
                     {report.detailed_feedback}
                   </Typography>
@@ -373,7 +376,7 @@ const ReportPage: React.FC = () => {
                     </CardContent>
                   </Card>
                 </Box>
-                
+
                 <Box sx={{ flex: 1 }}>
                   <Card sx={{ background: 'rgba(255, 255, 255, 0.9)' }}>
                     <CardContent>

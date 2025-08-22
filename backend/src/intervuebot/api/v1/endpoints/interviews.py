@@ -245,27 +245,53 @@ async def get_next_question(session_id: str) -> QuestionResponse:
                 detail="Interview session not found"
             )
         
-        # Generate next question using adaptive agent
+        # Restrict if interview is already completed
+        if session_data.get("status") == "completed":
+            raise HTTPException(
+                status_code=400,
+                detail="Interview session is already completed. No further questions allowed."
+            )
+        # Check if there is an unanswered question
+        questions = session_data.get("questions", [])
+        responses = session_data.get("responses", [])
+        unanswered_question = None
+        if questions:
+            # Find the first question that does not have a response
+            answered_ids = {resp.get("question_id") for resp in responses}
+            for q in questions:
+                if q.get("id") not in answered_ids:
+                    unanswered_question = q
+                    break
+        if unanswered_question:
+            # Return the previous unanswered question
+            return QuestionResponse(
+                question=Question(**unanswered_question),
+                session_id=session_id,
+                question_number=questions.index(unanswered_question) + 1,
+                time_limit=unanswered_question.get("expected_duration", 300),
+                context=unanswered_question.get("context", {})
+            )
+        # Otherwise, generate next question using adaptive agent
         question = await adaptive_interview_agent.generate_next_question(
             candidate_profile=session_data.get("candidate", {}),
-            previous_responses=session_data.get("responses", []),
+            previous_responses=responses,
             resume_analysis=session_data.get("resume_analysis", {}),
             position=session_data.get("position", "Software Engineer"),
             current_difficulty=session_data.get("current_difficulty", "medium"),
             interview_progress=float(session_data.get("current_question_index", 0)) / 10.0,  # Assuming 10 questions total
             question_count=int(session_data.get("current_question_index", 0))
         )
-        
-        # Update session data
+        # Add new question to session
+        questions.append(question.dict())
         updated_session_data = session_data.copy()
+        updated_session_data["questions"] = questions
         updated_session_data["current_question_index"] = int(session_data.get("current_question_index", 0)) + 1
         updated_session_data["total_questions_asked"] = int(session_data.get("total_questions_asked", 0)) + 1
         await store_interview_session(session_id, updated_session_data)
-        
         return QuestionResponse(
             question=question,
             session_id=session_id,
-            question_number=int(session_data.get("current_question_index", 0)) + 1,
+            question_number=len(questions),
             time_limit=question.expected_duration,
             context=question.context
         )
@@ -310,6 +336,12 @@ async def submit_response(session_id: str, request: ResponseSubmit) -> JSONRespo
                 detail="Interview session not found"
             )
         
+        # Restrict if interview is already completed
+        if session_data.get("status") == "completed":
+            raise HTTPException(
+                status_code=400,
+                detail="Interview session is already completed. No further responses allowed."
+            )
         # Get the current question from session or create a placeholder
         current_question = Question(
             id=request.question_id,
@@ -447,13 +479,17 @@ async def finalize_interview(session_id: str) -> FinalizeResult:
     try:
         # Get session data from Redis
         session_data = await get_interview_session(session_id)
-        
         if not session_data:
             raise HTTPException(
                 status_code=404,
                 detail="Interview session not found"
             )
-        
+        # Restrict if interview is already completed
+        if session_data.get("status") == "completed":
+            raise HTTPException(
+                status_code=400,
+                detail="Interview session is already completed. Cannot finalize again."
+            )
         # Generate comprehensive report using evaluation agent
         report = await evaluation_agent.generate_final_report(
             session_id=session_id,
@@ -463,9 +499,10 @@ async def finalize_interview(session_id: str) -> FinalizeResult:
             questions=session_data.get("questions", [])
         )
         
-        # Update session status
-        await store_interview_session(session_id, {"status": "completed"})
-        await store_interview_session(session_id, {"final_report": report})
+        # Merge status and final_report into the existing session data and persist
+        session_data["status"] = "completed"
+        session_data["final_report"] = report
+        await store_interview_session(session_id, session_data)
         
         return FinalizeResult(
             status="completed",
@@ -480,7 +517,6 @@ async def finalize_interview(session_id: str) -> FinalizeResult:
                 "average_response_time": report.get("average_response_time", 0.0)
             }
         )
-        
     except HTTPException:
         raise
     except Exception as e:

@@ -37,7 +37,7 @@ import InterviewService, { Question, ResponseEvaluation } from '../services/api'
 const InterviewPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  
+
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
@@ -69,11 +69,11 @@ const InterviewPage: React.FC = () => {
 
   const handleTimeoutExpired = async () => {
     if (!sessionId || !currentQuestion) return;
-    
+
     console.log('Time expired, auto-submitting empty response and ending interview');
     setSubmitting(true);
     setError(null);
-    
+
     try {
       // Submit empty response to indicate timeout
       await InterviewService.submitResponse(sessionId, {
@@ -81,10 +81,10 @@ const InterviewPage: React.FC = () => {
         answer: "[No response - time expired]",
         time_taken: currentQuestion.expected_duration,
       });
-      
+
       // Show timeout message
       setError("Time expired! Your interview has been automatically ended due to no response.");
-      
+
       // Auto-finalize interview after 5 seconds
       setTimeout(async () => {
         try {
@@ -95,7 +95,7 @@ const InterviewPage: React.FC = () => {
           setError('Interview ended due to timeout. Please contact support for your results.');
         }
       }, 5000);
-      
+
     } catch (err) {
       console.error('Failed to submit timeout response:', err);
       setError('Interview ended due to timeout. Please contact support for your results.');
@@ -113,12 +113,12 @@ const InterviewPage: React.FC = () => {
     if (loading) {
       return;
     }
-    
+
     console.log('Loading next question for session:', sessionId);
     setLoading(true);
     setError(null);
     setEvaluation(null);
-    
+
     try {
       const questionData = await InterviewService.getNextQuestion(sessionId);
       console.log('Next question loaded:', questionData);
@@ -136,28 +136,31 @@ const InterviewPage: React.FC = () => {
 
   const handleSubmitResponse = async () => {
     if (!sessionId || !currentQuestion || !response.trim()) return;
-    
+
+    // If response is empty, fill with default text
+    const answerToSend = response.trim() ? response : '[Not answered]';
+
     setSubmitting(true);
     setError(null);
-    
+
     try {
       const evaluationData = await InterviewService.submitResponse(sessionId, {
         question_id: currentQuestion.id,
-        answer: response,
+        answer: answerToSend,
         time_taken: currentQuestion.expected_duration - timeLeft,
       });
-      
+
       setEvaluation(evaluationData.evaluation);
       setResponse('');
-      
+
       console.log('Response submitted successfully, scheduling next question...');
-      
-      // Auto-advance to next question after 3 seconds
+
+      // Auto-advance to next question after 5 seconds
       setTimeout(() => {
         console.log('Timeout triggered, loading next question...');
         loadNextQuestion();
-      }, 3000);
-      
+      }, 5000);
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit response');
     } finally {
@@ -167,10 +170,10 @@ const InterviewPage: React.FC = () => {
 
   const handleFinalizeInterview = async () => {
     if (!sessionId) return;
-    
+
     try {
       await InterviewService.finalizeInterview(sessionId);
-      navigate(`/report/${sessionId}`);
+      navigate(`/report/${sessionId}`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to finalize interview');
     }
@@ -224,7 +227,7 @@ const InterviewPage: React.FC = () => {
               {currentQuestion?.category} • {currentQuestion?.difficulty} difficulty
             </Typography>
           </Box>
-          
+
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Chip
               icon={<Timer />}
@@ -283,7 +286,7 @@ const InterviewPage: React.FC = () => {
                       <Typography variant="h6" gutterBottom>
                         {currentQuestion?.text}
                       </Typography>
-                      
+
                       {/* Time Progress Bar */}
                       <Box sx={{ mt: 2 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
@@ -300,7 +303,7 @@ const InterviewPage: React.FC = () => {
                           color={timeLeft < 30 ? 'error' : timeLeft < 60 ? 'warning' : 'primary'}
                           sx={{ height: 8, borderRadius: 4 }}
                         />
-                        
+
                         {/* Time Warning Messages */}
                         {timeLeft < 30 && (
                           <Alert severity="error" sx={{ mt: 1, py: 0 }}>
@@ -313,7 +316,7 @@ const InterviewPage: React.FC = () => {
                           </Alert>
                         )}
                       </Box>
-                      
+
                       {/* Question Context */}
                       {currentQuestion?.context && (
                         <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
@@ -327,7 +330,7 @@ const InterviewPage: React.FC = () => {
                           )}
                         </Box>
                       )}
-                      
+
                       <TextField
                         multiline
                         rows={6}
@@ -338,7 +341,7 @@ const InterviewPage: React.FC = () => {
                         disabled={submitting}
                         sx={{ mb: 3 }}
                       />
-                      
+
                       <Box sx={{ display: 'flex', gap: 2 }}>
                         <Button
                           variant="contained"
@@ -349,14 +352,6 @@ const InterviewPage: React.FC = () => {
                           sx={{ flex: 1 }}
                         >
                           {submitting ? 'Submitting...' : 'Submit Answer'}
-                        </Button>
-                        <Button
-                          variant="outlined"
-                          size="large"
-                          onClick={loadNextQuestion}
-                          disabled={loading}
-                        >
-                          Next Question (Manual)
                         </Button>
                       </Box>
                     </CardContent>
@@ -377,7 +372,7 @@ const InterviewPage: React.FC = () => {
                     <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
                       Response Evaluation
                     </Typography>
-                    
+
                     {/* Overall Score */}
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
                       <Box sx={{ mr: 2 }}>
@@ -432,7 +427,7 @@ const InterviewPage: React.FC = () => {
 
                     {/* Feedback */}
                     <Divider sx={{ my: 2 }} />
-                    
+
                     {evaluation.strengths.length > 0 && (
                       <Box sx={{ mb: 2 }}>
                         <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'success.main', mb: 1 }}>
@@ -486,7 +481,7 @@ const InterviewPage: React.FC = () => {
                   <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
                     Interview Progress
                   </Typography>
-                  
+
                   <Box sx={{ mb: 3 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                       <Typography variant="body2">Progress</Typography>
@@ -500,14 +495,14 @@ const InterviewPage: React.FC = () => {
                       sx={{ height: 8, borderRadius: 4 }}
                     />
                   </Box>
-                  
+
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                     <Typography variant="body2">Question</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
                       {questionNumber} of {totalQuestions}
                     </Typography>
                   </Box>
-                  
+
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                     <Typography variant="body2">Time Remaining</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -522,7 +517,7 @@ const InterviewPage: React.FC = () => {
                   <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
                     Question Details
                   </Typography>
-                  
+
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="body2" color="text.secondary">
                       Category
@@ -534,20 +529,20 @@ const InterviewPage: React.FC = () => {
                       sx={{ mt: 0.5 }}
                     />
                   </Box>
-                  
+
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="body2" color="text.secondary">
                       Difficulty
                     </Typography>
                     <Chip
                       label={currentQuestion?.difficulty || 'Medium'}
-                      color={currentQuestion?.difficulty === 'hard' ? 'error' : 
-                             currentQuestion?.difficulty === 'easy' ? 'success' : 'warning'}
+                      color={currentQuestion?.difficulty === 'hard' ? 'error' :
+                        currentQuestion?.difficulty === 'easy' ? 'success' : 'warning'}
                       size="small"
                       sx={{ mt: 0.5 }}
                     />
                   </Box>
-                  
+
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="body2" color="text.secondary">
                       Expected Duration
