@@ -39,6 +39,14 @@ const schema = yup.object().shape({
   duration_minutes: yup.number().min(15, 'Minimum 15 minutes').max(120, 'Maximum 120 minutes').required('Duration is required'),
 });
 
+interface ResumeData {
+  name?: string;
+  email?: string;
+  position?: string;
+  experience_level?: 'junior' | 'mid-level' | 'senior' | 'lead';
+  interview_type?: 'technical' | 'behavioral' | 'mixed' | 'leadership';
+}
+
 interface InterviewFormData {
   name: string;
   email: string;
@@ -62,6 +70,7 @@ const HomePage: React.FC = () => {
     handleSubmit,
     formState: { errors },
     reset,
+    setValue,
   } = useForm<InterviewFormData>({
     resolver: yupResolver(schema),
     defaultValues: {
@@ -101,6 +110,20 @@ const HomePage: React.FC = () => {
       if (uploadResponse.status === 'success' || uploadResponse.status === 'partial_success') {
         setUploadedFiles(uploadResponse.files);
         setSuccess(uploadResponse.message);
+        
+        // If resume data is available, update the form fields
+        if (uploadResponse.resume_data) {
+          const { name, email, position, experience_level, interview_type } = uploadResponse.resume_data;
+          
+          if (name) setValue('name', name);
+          if (email) setValue('email', email);
+          if (position) setValue('position', position);
+          if (experience_level) setValue('experience_level', experience_level);
+          if (interview_type) setValue('interview_type', interview_type);
+          
+          // Set a default duration if not set
+          setValue('duration_minutes', 60);
+        }
         
         if (uploadResponse.errors.length > 0) {
           setError(`Some files had issues: ${uploadResponse.errors.join(', ')}`);

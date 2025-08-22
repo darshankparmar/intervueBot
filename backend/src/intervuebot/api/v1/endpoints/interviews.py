@@ -245,6 +245,9 @@ async def get_next_question(session_id: str) -> QuestionResponse:
                 detail="Interview session not found"
             )
         
+        # Get current question index and increment it
+        current_question_index = int(session_data.get("current_question_index", 0))
+        
         # Generate next question using adaptive agent
         question = await adaptive_interview_agent.generate_next_question(
             candidate_profile=session_data.get("candidate", {}),
@@ -252,14 +255,25 @@ async def get_next_question(session_id: str) -> QuestionResponse:
             resume_analysis=session_data.get("resume_analysis", {}),
             position=session_data.get("position", "Software Engineer"),
             current_difficulty=session_data.get("current_difficulty", "medium"),
-            interview_progress=float(session_data.get("current_question_index", 0)) / 10.0,  # Assuming 10 questions total
-            question_count=int(session_data.get("current_question_index", 0))
+            interview_progress=current_question_index / 10.0,  # Assuming 10 questions total
+            question_count=current_question_index
         )
+        
+        # Store the generated question in the session
+        questions = session_data.get("questions", [])
+        questions.append({
+            "id": question.id,
+            "text": question.text,
+            "category": question.category,
+            "difficulty": question.difficulty,
+            "timestamp": datetime.utcnow().isoformat()
+        })
         
         # Update session data
         updated_session_data = session_data.copy()
-        updated_session_data["current_question_index"] = int(session_data.get("current_question_index", 0)) + 1
-        updated_session_data["total_questions_asked"] = int(session_data.get("total_questions_asked", 0)) + 1
+        updated_session_data["current_question_index"] = current_question_index + 1
+        updated_session_data["total_questions_asked"] = len(questions)
+        updated_session_data["questions"] = questions
         await store_interview_session(session_id, updated_session_data)
         
         return QuestionResponse(
@@ -278,6 +292,7 @@ async def get_next_question(session_id: str) -> QuestionResponse:
             status_code=500,
             detail=f"Failed to get next question: {str(e)}"
         )
+
 
 
 @router.post("/{session_id}/respond",

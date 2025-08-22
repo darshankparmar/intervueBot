@@ -4,7 +4,7 @@ File-related schemas for IntervueBot API.
 This module defines the data models for file uploads, storage, and management.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -31,6 +31,7 @@ class FileUploadResponse(BaseModel):
     message: str = Field(..., description="Upload result message")
     files: List[FileInfo] = Field(..., description="Successfully uploaded files")
     errors: List[str] = Field(default_factory=list, description="Upload errors if any")
+    resume_data: Optional[Dict[str, Any]] = Field(default=None, description="Extracted resume data")
 
 
 class FileReference(BaseModel):

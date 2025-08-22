@@ -27,6 +27,7 @@ export interface FileInfo {
 }
 
 export interface FileUploadResponse {
+  resume_data: any;
   status: string;
   message: string;
   files: FileInfo[];

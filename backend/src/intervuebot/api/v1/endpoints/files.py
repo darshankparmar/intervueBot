@@ -8,12 +8,14 @@ Files are stored and managed separately from interview sessions.
 import logging
 import uuid
 from typing import List
+import fitz  # PyMuPDF
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 
 from ....schemas.file import FileUploadResponse, FileInfo
 from ....services.file_upload_service import file_upload_service
 from ....core.config import settings
+from ....agents.resume_parser_agent import ResumeParserAgent
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +125,24 @@ async def upload_files(
                 # Store file content
                 file_content = await file.read()
                 
+                doc = fitz.open(stream=file_content, filetype="pdf")
+                file_text = ""
+                for page in doc:
+                    file_text += page.get_text()
+                
+                # Parse resume
+                print("file_text : ", file_text)
+                resume_parser_agent = ResumeParserAgent()
+                json_template = {
+                    "name": "string",
+                    "email": "user@example.com",
+                    "position": "string",
+                    "experience_level": "junior",
+                    "interview_type": "technical"
+                }
+                resume_data = resume_parser_agent.extract_data_from_pdf(file_text, json_template)
+                
+                print("resume_data : ", resume_data)
                 # Store file using file upload service
                 stored_file = await file_upload_service.store_file(
                     file_id=file_id,
@@ -161,7 +181,8 @@ async def upload_files(
             status=status,
             message=message,
             files=uploaded_files,
-            errors=errors if errors else []
+            errors=errors if errors else [],
+            resume_data=resume_data
         )
         
     except HTTPException:

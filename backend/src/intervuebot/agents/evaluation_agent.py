@@ -305,8 +305,6 @@ class EvaluationAgent:
             return ["Consider with reservations", "Provide additional training", "Re-evaluate after probation"]
         else:
             return ["Not recommended for this position", "Consider for other roles", "Provide constructive feedback"]
-    
-
 
 
 # Global evaluation agent instance
