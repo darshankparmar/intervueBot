@@ -1,173 +1,93 @@
-# 🤖 IntervueBot Backend
+mypy src/
 
-AI Interview Taker Agent using Agno Framework and FastAPI
+# IntervueBot Backend
 
-## 🚀 Quick Start
+AI-powered interview system using FastAPI.
 
-### Prerequisites
+## Quick Start
 
-- Python 3.11+
-- PostgreSQL 12+
-- Redis 6+
-- Google AI API key (for Gemini models)
-
-### Environment Setup
-
-1. **Create virtual environment**
+1. **Clone & Setup**
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-2. **Install dependencies**
-   ```bash
+   # On Windows:
+   venv\Scripts\activate
+   # On Linux/Mac:
+   source venv/bin/activate
    pip install -e .
-   ```
-
-3. **Configure environment**
-   ```bash
    cp env.example .env
-   # Edit .env with your configuration
+   # Edit .env as needed
    ```
 
-4. **Start the application**
+2. **Run the Server**
    ```bash
    python -m src.main
+   # or for auto-reload (dev)
+   uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
    ```
 
-Visit `http://localhost:8000/docs` for API documentation.
+3. **API Docs:**  
+   Visit [http://localhost:8000/docs](http://localhost:8000/docs)
 
-## 📁 Project Structure
+---
+
+## Project Structure
 
 ```
 backend/
 ├── src/
 │   ├── intervuebot/
-│   │   ├── api/                    # API routes and endpoints
-│   │   │   └── v1/
-│   │   │       ├── endpoints/      # Individual endpoint modules
-│   │   │       └── router.py       # Main API router
-│   │   ├── core/                   # Core configuration and utilities
-│   │   │   ├── config.py          # Application settings
-│   │   │   └── events.py          # Startup/shutdown handlers
-│   │   ├── schemas/                # Pydantic data models
-│   │   │   └── interview.py       # Interview-related schemas
-│   │   ├── agents/                 # Agno AI agents (TODO)
-│   │   ├── models/                 # Database models (TODO)
-│   │   ├── services/               # Business logic (TODO)
-│   │   └── utils/                  # Utility functions (TODO)
-│   └── main.py                     # Application entry point
-├── tests/                          # Test suite (TODO)
-├── pyproject.toml                  # Project configuration
-├── env.example                     # Environment variables template
-└── README.md                       # This file
+│   │   ├── api/         # API endpoints
+│   │   ├── core/        # Config, events, redis
+│   │   ├── schemas/     # Pydantic models
+│   │   ├── agents/      # AI agents
+│   │   ├── services/    # Business logic
+│   └── main.py          # App entry point
+├── tests/               # Unit tests
+├── pyproject.toml
+├── env.example
+└── README.md
 ```
 
-## 🔧 Configuration
+---
 
-### Environment Variables
+## Configuration
 
-Key configuration options in `.env`:
+- All settings are in `.env`
+- Key variables: `REDIS_URL`, `GOOGLE_API_KEY`, `SECRET_KEY`, `PORT`, etc.
 
-- `DEBUG`: Enable debug mode
-- `HOST`: Server host (default: 0.0.0.0)
-- `PORT`: Server port (default: 8000)
-- `SECRET_KEY`: Application secret key
-- `GOOGLE_API_KEY`: Google AI API key (for Gemini)
-- `POSTGRES_*`: Database configuration
-- `REDIS_URL`: Redis connection URL
+---
 
-## 📊 API Endpoints
+## Main API Endpoints
 
-### Health Check
-- `GET /api/v1/health/` - Basic health check
-- `GET /api/v1/health/status` - Detailed status
-- `GET /api/v1/health/redis` - Redis health check
+- `POST   /api/v1/interviews/start` — Start interview
+- `GET    /api/v1/interviews/{session_id}/next-question` — Get next question
+- `POST   /api/v1/interviews/{session_id}/respond` — Submit response
+- `POST   /api/v1/interviews/{session_id}/finalize` — End interview & get report
+- `GET    /api/v1/interviews/{session_id}/report` — Get evaluation report
+- `GET    /api/v1/health/` — Health check
 
-### Agent Testing
-- `POST /api/v1/interviews/start` - Start interview with Agno agents
-- `GET /api/v1/interviews/{session_id}/question` - Get next question
-- `POST /api/v1/interviews/{session_id}/respond` - Submit and evaluate response
-- `GET /api/v1/interviews/{session_id}/report` - Get final evaluation report
+---
 
-### Interviews
-- `POST /api/v1/interviews/start` - Start new interview
-- `GET /api/v1/interviews/{session_id}/question` - Get next question
-- `POST /api/v1/interviews/{session_id}/respond` - Submit response
-- `POST /api/v1/interviews/{session_id}/end` - End interview
-- `GET /api/v1/interviews/{session_id}/report` - Get evaluation report
+## Development
 
-## 🧪 Development
+- **Format:** `black src/` & `isort src/`
+- **Lint:** `flake8 src/` & `mypy src/`
+- **Test:** `pytest`
 
-### Code Quality
+---
 
-```bash
-# Format code
-black src/
-isort src/
+## Production
 
-# Lint code
-flake8 src/
-mypy src/
+- **Docker:**
+  ```bash
+  docker build -t intervuebot-backend .
+  docker run -p 8000:8000 intervuebot-backend
+  ```
+- **Manual:**  
+  `gunicorn src.main:app -w 4 -k uvicorn.workers.UvicornWorker`
 
-# Run tests
-pytest
-```
+---
 
-### Running in Development
+## License
 
-```bash
-# With auto-reload
-uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
-
-# Or using the main module
-python -m src.main
-```
-
-## 🚀 Production Deployment
-
-### Using Docker
-
-```bash
-# Build image
-docker build -t intervuebot-backend .
-
-# Run container
-docker run -p 8000:8000 intervuebot-backend
-```
-
-### Manual Deployment
-
-```bash
-# Install production dependencies
-pip install -e .[dev]
-
-# Run with gunicorn
-gunicorn src.main:app -w 4 -k uvicorn.workers.UvicornWorker
-```
-
-## 🔮 Next Steps
-
-1. **Database Integration**
-   - Set up SQLAlchemy models
-   - Configure Alembic migrations
-   - Implement database services
-
-2. **AI Agents** ✅
-   - ✅ Agno interview agent implemented
-   - ✅ Evaluation agent implemented
-   - ✅ Question generator agent implemented
-
-3. **Business Logic**
-   - Interview session management
-   - Response evaluation
-   - Report generation
-
-4. **Testing**
-   - Unit tests for all modules
-   - Integration tests
-   - API endpoint tests
-
-## 📝 License
-
-MIT License - see LICENSE file for details. 
+MIT License
