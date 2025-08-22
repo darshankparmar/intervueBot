@@ -1,5 +1,7 @@
 # IntervueBot
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/darshankparmar/intervueBot)
+
 AI-powered interview platform with FastAPI backend and React frontend.
 
 [![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://python.org)
@@ -69,8 +71,7 @@ intervuebot/
 ---
 
 ## License
-
-MIT License
+Licensed under the [MIT License](LICENSE)
 ---
 
 ## Contributing
