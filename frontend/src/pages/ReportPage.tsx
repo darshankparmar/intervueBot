@@ -34,6 +34,7 @@ import {
   ThumbsUp,
   ThumbsDown,
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import InterviewService, { InterviewReport } from '../services/api';
 
 const ReportPage: React.FC = () => {
@@ -70,11 +71,12 @@ const ReportPage: React.FC = () => {
   };
 
   const getHiringRecommendationColor = (recommendation: string) => {
-    switch (recommendation) {
+    switch (recommendation?.toLowerCase()) {
       case 'hire':
         return 'success';
       case 'consider':
         return 'warning';
+      case 'do_not_hire':
       case 'reject':
         return 'error';
       default:
@@ -83,15 +85,16 @@ const ReportPage: React.FC = () => {
   };
 
   const getHiringRecommendationIcon = (recommendation: string) => {
-    switch (recommendation) {
+    switch (recommendation?.toLowerCase()) {
       case 'hire':
-        return <ThumbsUp size={20} />;
+        return <ThumbsUp size={20} color="#10b981" />;
       case 'consider':
-        return <AlertCircle size={20} />;
+        return <AlertCircle size={20} color="#f59e0b" />;
+      case 'do_not_hire':
       case 'reject':
-        return <ThumbsDown size={20} />;
+        return <ThumbsDown size={20} color="#ef4444" />;
       default:
-        return <Star size={20} />;
+        return <Star size={20} color="#6366f1" />;
     }
   };
 
@@ -340,18 +343,38 @@ const ReportPage: React.FC = () => {
 
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                     <Chip
-                      label={report.hiring_recommendation.toUpperCase()}
+                      label={report.hiring_recommendation?.toUpperCase()}
                       color={getHiringRecommendationColor(report.hiring_recommendation)}
-                      sx={{ fontWeight: 600 }}
+                      sx={{ fontWeight: 600, fontSize: 16, px: 2, py: 1, letterSpacing: 1 }}
                     />
-                    <Typography variant="body2" color="text.secondary">
-                      Confidence: {Math.round(report.confidence_level * 100)}%
-                    </Typography>
+                    {typeof report.confidence_level === 'number' && (
+                      <Typography variant="body2" color="text.secondary">
+                        Confidence: {Math.round(report.confidence_level * 100)}%
+                      </Typography>
+                    )}
                   </Box>
 
-                  <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
-                    {report.detailed_feedback}
-                  </Typography>
+                  {report.recommendations && report.recommendations.length > 0 && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                        Recommendations
+                      </Typography>
+                      <List dense>
+                        {report.recommendations.map((rec, idx) => (
+                          <ListItem key={idx} sx={{ py: 0.5 }}>
+                            <ListItemIcon sx={{ minWidth: 32 }}>
+                              <Star size={16} color="#6366f1" />
+                            </ListItemIcon>
+                            <ListItemText primary={rec} />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </Box>
+                  )}
+
+                  <Box sx={{ mt: 2 }}>
+                    <ReactMarkdown>{report.detailed_feedback || ''}</ReactMarkdown>
+                  </Box>
                 </CardContent>
               </Card>
 
