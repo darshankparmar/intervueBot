@@ -12,6 +12,7 @@ from datetime import datetime
 
 from agno.agent import Agent
 from agno.models.google import Gemini
+from agno.models.openai import OpenAIChat
 
 from intervuebot.schemas.interview import (
     CandidateProfile, Question, Response, ResumeAnalysis,
@@ -34,9 +35,15 @@ class AdaptiveInterviewAgent:
     """
     
     def __init__(self):
-        """Initialize the adaptive interview agent."""
+        """Initialize the adaptive interview agent with dynamic LLM selection."""
+        provider = settings.DEFAULT_LLM_PROVIDER.lower()
+        model_id = settings.DEFAULT_LLM_MODEL
+        if provider == "openai":
+            model = OpenAIChat(id=model_id, api_key=settings.OPENAI_API_KEY)
+        else:
+            model = Gemini(id=model_id, api_key=settings.GOOGLE_API_KEY)
         self.agent = Agent(
-            model=Gemini(id="gemini-1.5-flash"),
+            model=model,
             name="AdaptiveInterviewBot",
             role="Adaptive Interview Conductor",
             goal="Conduct intelligent, adaptive interviews that adjust based on candidate responses and background",

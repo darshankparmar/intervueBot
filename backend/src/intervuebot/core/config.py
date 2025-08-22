@@ -77,9 +77,9 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
 
-    # Default LLM provider (set to Google for development)
-    DEFAULT_LLM_PROVIDER: str = "google"
-    DEFAULT_LLM_MODEL: str = "gemini-pro"
+    # Default LLM provider (set to OpenAI for production)
+    DEFAULT_LLM_PROVIDER: str = "openai"
+    DEFAULT_LLM_MODEL: str = "gpt-3.5-turbo"
 
     # Interview settings
     MAX_INTERVIEW_DURATION_MINUTES: int = 60

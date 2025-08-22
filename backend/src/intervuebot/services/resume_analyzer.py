@@ -9,6 +9,7 @@ import pdfplumber
 
 from agno.agent import Agent
 from agno.models.google import Gemini
+from agno.models.openai import OpenAIChat
 
 from intervuebot.schemas.interview import ResumeAnalysis
 from intervuebot.core.config import settings
@@ -18,9 +19,15 @@ logger = logging.getLogger(__name__)
 
 class ResumeAnalyzer:
     def __init__(self):
-        """Initialize ResumeAnalyzer with Gemini model."""
+        """Initialize ResumeAnalyzer with dynamic LLM selection."""
+        provider = settings.DEFAULT_LLM_PROVIDER.lower()
+        model_id = settings.DEFAULT_LLM_MODEL
+        if provider == "openai":
+            model = OpenAIChat(id=model_id, api_key=settings.OPENAI_API_KEY)
+        else:
+            model = Gemini(id=model_id, api_key=settings.GOOGLE_API_KEY)
         self.agent = Agent(
-            model=Gemini(id="gemini-1.5-flash"),
+            model=model,
             name="ResumeAnalyzer",
             role="Resume Analysis Expert",
             goal="Extract structured information from resumes for interview preparation",

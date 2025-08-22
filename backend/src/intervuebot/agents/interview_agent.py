@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Any
 
 from agno.agent import Agent
 from agno.models.google import Gemini
+from agno.models.openai import OpenAIChat
 
 from intervuebot.core.config import settings
 from intervuebot.schemas.interview import Question, Response, CandidateProfile
@@ -26,10 +27,15 @@ class InterviewAgent:
     """
     
     def __init__(self):
-        """Initialize the interview agent."""
-        # Initialize LLM with Google Gemini
+        """Initialize the interview agent with dynamic LLM selection."""
+        provider = settings.DEFAULT_LLM_PROVIDER.lower()
+        model_id = settings.DEFAULT_LLM_MODEL
+        if provider == "openai":
+            model = OpenAIChat(id=model_id, api_key=settings.OPENAI_API_KEY)
+        else:
+            model = Gemini(id=model_id, api_key=settings.GOOGLE_API_KEY)
         self.agent = Agent(
-            model=Gemini(id="gemini-1.5-flash-8b"),
+            model=model,
             name="IntervueBot",
             role="AI Interview Conductor",
             goal="Conduct comprehensive technical and behavioral interviews to assess candidate skills and fit",
